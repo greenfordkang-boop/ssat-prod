@@ -459,6 +459,190 @@
     // Supabase 연결 상태
     let supabaseConnected = false;
 
+    // ══════════════════════════════════════════════════════════════════
+    // 보안 설정
+    // ══════════════════════════════════════════════════════════════════
+    const SECURITY_CONFIG = {
+      SESSION_TIMEOUT: 30 * 60 * 1000,    // 30분 (밀리초)
+      WARNING_BEFORE: 5 * 60 * 1000,       // 만료 5분 전 경고
+      ACTIVITY_EVENTS: ['mousedown', 'keydown', 'scroll', 'touchstart']
+    };
+
+    // 현재 로그인 사용자 정보
+    let currentUser = null;
+    let userProfile = null;
+    let sessionTimer = null;
+    let warningTimer = null;
+    let lastActivity = Date.now();
+
+    // ══════════════════════════════════════════════════════════════════
+    // 세션 관리
+    // ══════════════════════════════════════════════════════════════════
+    function resetSessionTimer() {
+      lastActivity = Date.now();
+      clearTimeout(sessionTimer);
+      clearTimeout(warningTimer);
+
+      // 경고 타이머 (만료 5분 전)
+      warningTimer = setTimeout(() => {
+        if (currentUser) {
+          const remaining = Math.ceil(SECURITY_CONFIG.WARNING_BEFORE / 60000);
+          if (confirm(`세션이 ${remaining}분 후 만료됩니다. 연장하시겠습니까?`)) {
+            resetSessionTimer();
+            logAccess('session_extended');
+          }
+        }
+      }, SECURITY_CONFIG.SESSION_TIMEOUT - SECURITY_CONFIG.WARNING_BEFORE);
+
+      // 세션 만료 타이머
+      sessionTimer = setTimeout(() => {
+        if (currentUser) {
+          alert('세션이 만료되었습니다. 다시 로그인해주세요.');
+          handleLogout(true);
+        }
+      }, SECURITY_CONFIG.SESSION_TIMEOUT);
+    }
+
+    function setupActivityListeners() {
+      SECURITY_CONFIG.ACTIVITY_EVENTS.forEach(event => {
+        document.addEventListener(event, () => {
+          if (currentUser && Date.now() - lastActivity > 60000) {
+            resetSessionTimer();
+          }
+        }, { passive: true });
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 접근 로그 기록
+    // ══════════════════════════════════════════════════════════════════
+    async function logAccess(action, details = null) {
+      if (!supabaseConnected || !currentUser) return;
+      try {
+        await supabaseClient.from('access_logs').insert({
+          user_id: currentUser.id,
+          user_email: currentUser.email,
+          action: action,
+          details: details,
+          user_agent: navigator.userAgent
+        });
+      } catch (e) {
+        console.warn('접근 로그 기록 실패:', e);
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Supabase Auth 인증
+    // ══════════════════════════════════════════════════════════════════
+    async function signIn(email, password) {
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email: email,
+          password: password
+        });
+        if (error) throw error;
+
+        currentUser = data.user;
+        await loadUserProfile();
+        await logAccess('login');
+
+        await supabaseClient.from('user_profiles')
+          .update({ last_login: new Date().toISOString() })
+          .eq('id', currentUser.id);
+
+        resetSessionTimer();
+        setupActivityListeners();
+
+        return { success: true, user: currentUser };
+      } catch (e) {
+        console.error('로그인 실패:', e);
+        return { success: false, error: e.message };
+      }
+    }
+
+    async function signUp(email, password, displayName) {
+      try {
+        const { data, error } = await supabaseClient.auth.signUp({
+          email: email,
+          password: password,
+          options: { data: { display_name: displayName } }
+        });
+        if (error) throw error;
+        return { success: true, message: '회원가입이 완료되었습니다. 이메일을 확인해주세요.' };
+      } catch (e) {
+        console.error('회원가입 실패:', e);
+        return { success: false, error: e.message };
+      }
+    }
+
+    async function signOut() {
+      try {
+        await logAccess('logout');
+        await supabaseClient.auth.signOut();
+        currentUser = null;
+        userProfile = null;
+        clearTimeout(sessionTimer);
+        clearTimeout(warningTimer);
+        return { success: true };
+      } catch (e) {
+        console.error('로그아웃 실패:', e);
+        return { success: false, error: e.message };
+      }
+    }
+
+    async function loadUserProfile() {
+      if (!currentUser) return null;
+      try {
+        const { data, error } = await supabaseClient
+          .from('user_profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .single();
+        if (error) throw error;
+        userProfile = data;
+        return data;
+      } catch (e) {
+        console.warn('프로필 로드 실패:', e);
+        return null;
+      }
+    }
+
+    async function checkAuthSession() {
+      try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session) {
+          currentUser = session.user;
+          await loadUserProfile();
+
+          if (userProfile && !userProfile.is_active) {
+            alert('계정이 비활성화되었습니다. 관리자에게 문의하세요.');
+            await signOut();
+            return false;
+          }
+
+          resetSessionTimer();
+          setupActivityListeners();
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.error('세션 확인 실패:', e);
+        return false;
+      }
+    }
+
+    async function requestPasswordReset(email) {
+      try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        });
+        if (error) throw error;
+        return { success: true, message: '비밀번호 재설정 이메일을 발송했습니다.' };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+
     // Supabase 연결 테스트
     async function testSupabaseConnection() {
       try {
@@ -817,7 +1001,7 @@
 
     // 상태 관리
     let state = {
-      isAuthenticated: localStorage.getItem(AUTH_KEY) === 'true',
+      isAuthenticated: false,  // Supabase Auth로 관리
       activeTab: 'overview',
       activeProcess: null,
       activeSubMenu: 'production',  // 기본값: 생산현황
@@ -2187,6 +2371,39 @@
 
     // 로그인 화면
     function renderLogin() {
+      if (isSignUpMode) {
+        return `
+          <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-6">
+            <div class="w-full max-w-md bg-white/10 backdrop-blur-xl p-10 rounded-3xl border border-white/20">
+              <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl mb-6 text-4xl shadow-lg">👤</div>
+                <h1 class="text-2xl font-bold text-white mb-2">신규 계정 등록</h1>
+                <p class="text-slate-400 text-sm">Create New Account</p>
+              </div>
+              <div class="space-y-4">
+                <input type="text" id="displayNameInput" placeholder="이름 (선택사항)"
+                  class="w-full bg-white/10 border border-white/20 rounded-xl p-4 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <input type="email" id="emailInput" placeholder="이메일 주소"
+                  class="w-full bg-white/10 border border-white/20 rounded-xl p-4 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <input type="password" id="passwordInput" placeholder="비밀번호 (6자 이상)"
+                  class="w-full bg-white/10 border border-white/20 rounded-xl p-4 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onkeypress="if(event.key==='Enter')handleSignUp()">
+                <button onclick="handleSignUp()"
+                  class="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 py-4 rounded-xl font-bold text-lg text-white transition-all shadow-lg">
+                  계정 생성
+                </button>
+              </div>
+              <div class="mt-6 text-center">
+                <button onclick="toggleAuthMode()" class="text-slate-400 hover:text-white text-sm transition-colors">
+                  ← 로그인으로 돌아가기
+                </button>
+              </div>
+              <p class="mt-4 text-center text-slate-500 text-xs">첫 번째 등록자는 관리자 권한을 받습니다</p>
+            </div>
+          </div>
+        `;
+      }
+
       return `
         <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-6">
           <div class="w-full max-w-md bg-white/10 backdrop-blur-xl p-10 rounded-3xl border border-white/20">
@@ -2196,15 +2413,27 @@
               <p class="text-slate-400 text-sm">Production Management System</p>
             </div>
             <div class="space-y-4">
-              <input type="password" id="passwordInput" placeholder="비밀번호 입력"
-                class="w-full bg-white/10 border border-white/20 rounded-xl p-4 text-center text-lg text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              <input type="email" id="emailInput" placeholder="이메일 주소"
+                class="w-full bg-white/10 border border-white/20 rounded-xl p-4 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+              <input type="password" id="passwordInput" placeholder="비밀번호"
+                class="w-full bg-white/10 border border-white/20 rounded-xl p-4 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 onkeypress="if(event.key==='Enter')handleLogin()">
-              <button onclick="handleLogin()"
+              <button id="loginBtn" onclick="handleLogin()"
                 class="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 py-4 rounded-xl font-bold text-lg text-white transition-all shadow-lg">
                 시스템 접속
               </button>
             </div>
-            <p class="mt-6 text-center text-slate-500 text-xs">비밀번호: PROD2026</p>
+            <div class="mt-6 flex justify-between items-center">
+              <button onclick="handlePasswordReset()" class="text-slate-400 hover:text-white text-sm transition-colors">
+                비밀번호 찾기
+              </button>
+              <button onclick="toggleAuthMode()" class="text-emerald-400 hover:text-emerald-300 text-sm transition-colors font-medium">
+                계정 등록 →
+              </button>
+            </div>
+            <div class="mt-6 pt-6 border-t border-white/10">
+              <p class="text-center text-slate-500 text-xs">🔒 Supabase Auth 보안 인증</p>
+            </div>
           </div>
         </div>
       `;
@@ -2241,13 +2470,23 @@
               </div>
             </div>
             <div class="flex items-center gap-4">
+              ${userProfile ? `
+                <span class="flex items-center gap-2 text-white text-sm">
+                  <span class="px-2 py-1 rounded text-xs font-medium ${
+                    userProfile.role === 'admin' ? 'bg-red-500/20 text-red-400' :
+                    userProfile.role === 'editor' ? 'bg-blue-500/20 text-blue-400' :
+                    'bg-slate-500/20 text-slate-400'
+                  }">${userProfile.role === 'admin' ? '관리자' : userProfile.role === 'editor' ? '편집자' : '조회자'}</span>
+                  ${userProfile.display_name || currentUser?.email?.split('@')[0]}
+                </span>
+              ` : ''}
               <span class="flex items-center gap-2 text-blue-400 text-sm font-medium">
                 <span class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
                 ${state.rawData.length.toLocaleString()}건
               </span>
               <span class="flex items-center gap-2 ${supabaseConnected ? 'text-emerald-400' : 'text-slate-500'} text-sm">
                 <span class="w-2 h-2 ${supabaseConnected ? 'bg-emerald-400' : 'bg-slate-500'} rounded-full"></span>
-                ${supabaseConnected ? 'Supabase' : 'Offline'}
+                ${supabaseConnected ? '🔒 연결됨' : 'Offline'}
               </span>
               <span id="sync-status" class="text-amber-400 text-xs"></span>
               ${supabaseConnected ? `<button onclick="syncWithSupabase()" class="text-sky-400 hover:text-sky-300 text-sm font-medium transition-colors">동기화</button>` : ''}
@@ -6218,24 +6457,86 @@
     }
 
     // 이벤트 핸들러
-    function handleLogin() {
-      const password = document.getElementById('passwordInput').value;
-      if (password === 'PROD2026') {
+    async function handleLogin() {
+      const email = document.getElementById('emailInput')?.value;
+      const password = document.getElementById('passwordInput')?.value;
+
+      if (!email || !password) {
+        alert('이메일과 비밀번호를 입력해주세요.');
+        return;
+      }
+
+      const loginBtn = document.getElementById('loginBtn');
+      if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.textContent = '로그인 중...';
+      }
+
+      const result = await signIn(email, password);
+
+      if (result.success) {
         state.isAuthenticated = true;
-        localStorage.setItem(AUTH_KEY, 'true');
         render();
         if (state.rawData.length > 0) {
           setTimeout(() => { createCharts(); initTableSort(); }, 100);
         }
       } else {
-        alert('비밀번호가 틀렸습니다.');
+        alert('로그인 실패: ' + result.error);
+        if (loginBtn) {
+          loginBtn.disabled = false;
+          loginBtn.textContent = '시스템 접속';
+        }
       }
     }
 
-    function handleLogout() {
-      if (confirm('로그아웃 하시겠습니까?')) {
+    async function handleSignUp() {
+      const email = document.getElementById('emailInput')?.value;
+      const password = document.getElementById('passwordInput')?.value;
+      const displayName = document.getElementById('displayNameInput')?.value || email.split('@')[0];
+
+      if (!email || !password) {
+        alert('이메일과 비밀번호를 입력해주세요.');
+        return;
+      }
+
+      if (password.length < 6) {
+        alert('비밀번호는 최소 6자 이상이어야 합니다.');
+        return;
+      }
+
+      const result = await signUp(email, password, displayName);
+
+      if (result.success) {
+        alert(result.message);
+        toggleAuthMode();
+      } else {
+        alert('회원가입 실패: ' + result.error);
+      }
+    }
+
+    async function handlePasswordReset() {
+      const email = document.getElementById('emailInput')?.value;
+      if (!email) {
+        alert('이메일을 입력해주세요.');
+        return;
+      }
+
+      const result = await requestPasswordReset(email);
+      alert(result.success ? result.message : '비밀번호 재설정 실패: ' + result.error);
+    }
+
+    let isSignUpMode = false;
+    function toggleAuthMode() {
+      isSignUpMode = !isSignUpMode;
+      render();
+    }
+
+    async function handleLogout(isAutoLogout = false) {
+      if (isAutoLogout || confirm('로그아웃 하시겠습니까?')) {
+        await signOut();
         state.isAuthenticated = false;
-        localStorage.removeItem(AUTH_KEY);
+        currentUser = null;
+        userProfile = null;
         render();
       }
     }
@@ -6251,6 +6552,12 @@
       const file = event.target.files[0];
       if (!file) return;
 
+      // 편집 권한 확인
+      if (userProfile && !['admin', 'editor'].includes(userProfile.role)) {
+        alert('데이터 업로드 권한이 없습니다. 관리자에게 문의하세요.');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = async (e) => {
         const newData = parseCSV(e.target.result);
@@ -6259,9 +6566,10 @@
         render();
         setTimeout(() => { createCharts(); initTableSort(); }, 100);
         alert('데이터 ' + newData.length + '건이 저장되었습니다.');
-        // Supabase 동기화
+        // Supabase 동기화 및 로그 기록
         if (supabaseConnected) {
           await saveToSupabase('production_data', newData);
+          await logAccess('data_upload', { type: 'production_data', count: newData.length, filename: file.name });
         }
       };
       reader.readAsText(file, 'UTF-8');
@@ -6271,6 +6579,12 @@
       const file = event.target.files[0];
       if (!file) return;
 
+      // 편집 권한 확인
+      if (userProfile && !['admin', 'editor'].includes(userProfile.role)) {
+        alert('데이터 업로드 권한이 없습니다. 관리자에게 문의하세요.');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = async (e) => {
         const newData = parseAvailabilityCSV(e.target.result);
@@ -6279,9 +6593,10 @@
         render();
         setTimeout(() => { createCharts(); initTableSort(); }, 100);
         alert('가동율 데이터 ' + newData.length + '건이 저장되었습니다.');
-        // Supabase 동기화
+        // Supabase 동기화 및 로그 기록
         if (supabaseConnected) {
           await saveToSupabase('availability_data', newData);
+          await logAccess('data_upload', { type: 'availability_data', count: newData.length, filename: file.name });
         }
       };
       reader.readAsText(file, 'UTF-8');
@@ -6334,8 +6649,18 @@
       // Supabase 연결 테스트
       await testSupabaseConnection();
 
-      // Supabase에서 데이터 로드 시도
+      // 기존 세션 확인 (Supabase Auth)
       if (supabaseConnected) {
+        const hasSession = await checkAuthSession();
+        if (hasSession) {
+          state.isAuthenticated = true;
+          await logAccess('session_restored');
+          console.log('✅ 기존 세션 복원:', currentUser?.email);
+        }
+      }
+
+      // 인증된 경우에만 Supabase에서 데이터 로드
+      if (state.isAuthenticated && supabaseConnected) {
         const loaded = await loadAllFromSupabase();
         if (loaded) {
           console.log('📊 Supabase에서 데이터 로드 완료');
