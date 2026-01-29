@@ -454,7 +454,7 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdpcGtzeG9qeGRrcXB5eWlpaGNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2OTExOTQsImV4cCI6MjA4NTI2NzE5NH0.ZE7kpdUUEW--Ggum7s3f6OJ4bm7CdKkW3yuAZldgrqg';
 
     // Supabase 클라이언트 초기화
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // Supabase 연결 상태
     let supabaseConnected = false;
@@ -462,7 +462,7 @@
     // Supabase 연결 테스트
     async function testSupabaseConnection() {
       try {
-        const { data, error } = await supabase.from('production_data').select('count', { count: 'exact', head: true });
+        const { data, error } = await supabaseClient.from('production_data').select('count', { count: 'exact', head: true });
         if (error) throw error;
         supabaseConnected = true;
         console.log('✅ Supabase 연결 성공');
@@ -510,7 +510,7 @@
     async function loadFromSupabase(tableName) {
       if (!supabaseConnected) return null;
       try {
-        const { data, error } = await supabase.from(tableName).select('*');
+        const { data, error } = await supabaseClient.from(tableName).select('*');
         if (error) throw error;
         return data.map(toCamelCase);
       } catch (e) {
@@ -524,10 +524,10 @@
       if (!supabaseConnected || !data || data.length === 0) return false;
       try {
         // 기존 데이터 삭제
-        await supabase.from(tableName).delete().neq('id', 0);
+        await supabaseClient.from(tableName).delete().neq('id', 0);
         // 새 데이터 삽입
         const snakeData = data.map(toSnakeCase);
-        const { error } = await supabase.from(tableName).insert(snakeData);
+        const { error } = await supabaseClient.from(tableName).insert(snakeData);
         if (error) throw error;
         console.log(`✅ Supabase 저장 완료 (${tableName}): ${data.length}건`);
         return true;
