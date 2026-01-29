@@ -534,6 +534,9 @@
     // ══════════════════════════════════════════════════════════════════
     // Supabase Auth 인증
     // ══════════════════════════════════════════════════════════════════
+    // 관리자 이메일
+    const ADMIN_EMAIL = 'greenfordkang@gmail.com';
+
     async function signIn(email, password) {
       try {
         const { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -544,6 +547,15 @@
 
         currentUser = data.user;
         await loadUserProfile();
+
+        // 관리자가 아니고 승인되지 않은 경우
+        if (email !== ADMIN_EMAIL && userProfile && !userProfile.approved) {
+          await supabaseClient.auth.signOut();
+          currentUser = null;
+          userProfile = null;
+          return { success: false, error: '관리자 승인 대기 중입니다. 승인 후 로그인이 가능합니다.' };
+        }
+
         await logAccess('login');
 
         await supabaseClient.from('user_profiles')
@@ -553,7 +565,7 @@
         resetSessionTimer();
         setupActivityListeners();
 
-        return { success: true, user: currentUser };
+        return { success: true, user: currentUser, isAdmin: email === ADMIN_EMAIL };
       } catch (e) {
         console.error('로그인 실패:', e);
         return { success: false, error: e.message };
@@ -641,6 +653,56 @@
       } catch (e) {
         return { success: false, error: e.message };
       }
+    }
+
+    // 관리자 기능: 전체 사용자 목록 조회
+    async function getAllUsers() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('user_profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+      } catch (e) {
+        console.error('사용자 목록 조회 실패:', e);
+        return [];
+      }
+    }
+
+    // 관리자 기능: 사용자 승인
+    async function approveUser(userId) {
+      try {
+        const { error } = await supabaseClient
+          .from('user_profiles')
+          .update({ approved: true })
+          .eq('id', userId);
+        if (error) throw error;
+        return { success: true };
+      } catch (e) {
+        console.error('사용자 승인 실패:', e);
+        return { success: false, error: e.message };
+      }
+    }
+
+    // 관리자 기능: 사용자 거부/삭제
+    async function rejectUser(userId) {
+      try {
+        const { error } = await supabaseClient
+          .from('user_profiles')
+          .update({ approved: false, is_active: false })
+          .eq('id', userId);
+        if (error) throw error;
+        return { success: true };
+      } catch (e) {
+        console.error('사용자 거부 실패:', e);
+        return { success: false, error: e.message };
+      }
+    }
+
+    // 관리자 여부 확인
+    function isAdmin() {
+      return currentUser && currentUser.email === ADMIN_EMAIL;
     }
 
     // Supabase 연결 테스트
@@ -2482,6 +2544,7 @@
                 <button onclick="setTab('quality')" class="nav-btn ${state.activeTab === 'quality' ? 'active' : ''}">품질분석</button>
                 <button onclick="setTab('data')" class="nav-btn ${state.activeTab === 'data' ? 'active' : ''}">데이터조회</button>
                 <button onclick="setTab('upload')" class="nav-btn ${state.activeTab === 'upload' ? 'active' : ''}">파일업로드</button>
+                ${isAdmin() ? `<button onclick="setTab('admin')" class="nav-btn ${state.activeTab === 'admin' ? 'active' : ''}" style="background: linear-gradient(135deg, #dc2626, #b91c1c); color: white;">👑 관리자</button>` : ''}
               </div>
             </div>
             <div class="flex items-center gap-4">
@@ -2559,7 +2622,8 @@
             ${state.activeTab === 'upload' ? renderFileUpload() : ''}
             ${state.activeTab === 'downtime' ? renderDowntime() : ''}
             ${state.activeTab === 'wip-inventory' ? renderWipInventoryPage() : ''}
-            ${state.activeTab !== 'upload' && state.activeTab !== 'downtime' && state.activeTab !== 'wip-inventory' ? (state.rawData.length === 0 ? renderUploadPrompt() : `
+            ${state.activeTab === 'admin' ? '<div id="admin-panel-container"><div class="text-center py-8"><div class="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto"></div><p class="mt-4 text-slate-500">사용자 목록 로딩 중...</p></div></div>' : ''}
+            ${state.activeTab !== 'upload' && state.activeTab !== 'downtime' && state.activeTab !== 'wip-inventory' && state.activeTab !== 'admin' ? (state.rawData.length === 0 ? renderUploadPrompt() : `
               ${state.activeTab === 'overview' ? renderOverview(stats, filteredData) : ''}
               ${state.activeTab === 'process' ? renderProcess(filteredData) : ''}
               ${state.activeTab === 'quality' ? renderQuality(stats, filteredData) : ''}
@@ -2568,6 +2632,133 @@
           </main>
         </div>
       `;
+    }
+
+    // 관리자 패널 - 사용자 관리
+    async function renderAdminPanel() {
+      const users = await getAllUsers();
+      const pendingUsers = users.filter(u => !u.approved && u.email !== ADMIN_EMAIL);
+      const approvedUsers = users.filter(u => u.approved || u.email === ADMIN_EMAIL);
+
+      return `
+        <div class="space-y-6">
+          <div class="section-header">
+            <div class="section-title">👑 관리자 패널 - 사용자 관리</div>
+          </div>
+
+          <!-- 승인 대기 사용자 -->
+          <div class="card">
+            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <span class="w-3 h-3 bg-amber-500 rounded-full animate-pulse"></span>
+              승인 대기 중 (${pendingUsers.length}명)
+            </h3>
+            ${pendingUsers.length === 0 ? `
+              <div class="text-center py-8 text-slate-400">
+                <div class="text-4xl mb-2">✅</div>
+                <p>승인 대기 중인 사용자가 없습니다</p>
+              </div>
+            ` : `
+              <div class="overflow-x-auto">
+                <table class="data-table w-full">
+                  <thead>
+                    <tr>
+                      <th>이메일</th>
+                      <th>이름</th>
+                      <th>가입일</th>
+                      <th class="text-center">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pendingUsers.map(user => `
+                      <tr class="bg-amber-50">
+                        <td class="font-medium">${user.email}</td>
+                        <td>${user.display_name || '-'}</td>
+                        <td>${new Date(user.created_at).toLocaleDateString('ko-KR')}</td>
+                        <td class="text-center">
+                          <button onclick="handleApproveUser('${user.id}')"
+                            class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg mr-2 transition-colors">
+                            ✓ 승인
+                          </button>
+                          <button onclick="handleRejectUser('${user.id}')"
+                            class="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-sm rounded-lg transition-colors">
+                            ✕ 거부
+                          </button>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+
+          <!-- 승인된 사용자 목록 -->
+          <div class="card">
+            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <span class="w-3 h-3 bg-emerald-500 rounded-full"></span>
+              승인된 사용자 (${approvedUsers.length}명)
+            </h3>
+            <div class="overflow-x-auto">
+              <table class="data-table w-full">
+                <thead>
+                  <tr>
+                    <th>이메일</th>
+                    <th>이름</th>
+                    <th>역할</th>
+                    <th>마지막 로그인</th>
+                    <th>가입일</th>
+                    <th class="text-center">상태</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${approvedUsers.map(user => `
+                    <tr>
+                      <td class="font-medium">
+                        ${user.email}
+                        ${user.email === ADMIN_EMAIL ? '<span class="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">관리자</span>' : ''}
+                      </td>
+                      <td>${user.display_name || '-'}</td>
+                      <td><span class="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full">${user.role || 'viewer'}</span></td>
+                      <td>${user.last_login ? new Date(user.last_login).toLocaleString('ko-KR') : '-'}</td>
+                      <td>${new Date(user.created_at).toLocaleDateString('ko-KR')}</td>
+                      <td class="text-center">
+                        ${user.email === ADMIN_EMAIL ?
+                          '<span class="text-amber-500">👑</span>' :
+                          `<button onclick="handleRejectUser('${user.id}')" class="px-2 py-1 text-xs text-rose-500 hover:bg-rose-50 rounded transition-colors">비활성화</button>`
+                        }
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 사용자 승인 핸들러
+    async function handleApproveUser(userId) {
+      if (!confirm('이 사용자를 승인하시겠습니까?')) return;
+      const result = await approveUser(userId);
+      if (result.success) {
+        alert('사용자가 승인되었습니다.');
+        render();
+      } else {
+        alert('승인 실패: ' + result.error);
+      }
+    }
+
+    // 사용자 거부 핸들러
+    async function handleRejectUser(userId) {
+      if (!confirm('이 사용자를 거부/비활성화하시겠습니까?')) return;
+      const result = await rejectUser(userId);
+      if (result.success) {
+        alert('처리되었습니다.');
+        render();
+      } else {
+        alert('처리 실패: ' + result.error);
+      }
     }
 
     // 업로드 안내
@@ -6657,6 +6848,19 @@
     function render() {
       const app = document.getElementById('app');
       app.innerHTML = state.isAuthenticated ? renderDashboard() : renderLogin();
+
+      // 관리자 패널 비동기 로딩
+      if (state.isAuthenticated && state.activeTab === 'admin' && isAdmin()) {
+        loadAdminPanel();
+      }
+    }
+
+    async function loadAdminPanel() {
+      const container = document.getElementById('admin-panel-container');
+      if (container) {
+        const html = await renderAdminPanel();
+        container.innerHTML = html;
+      }
     }
 
     // 초기화
