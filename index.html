@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>생산실 통합 관리 시스템</title>
+  <title>신성오토텍 생산실 대시보드</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
@@ -2450,12 +2450,11 @@
     function renderLogin() {
       if (isSignUpMode) {
         return `
-          <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-6">
-            <div class="w-full max-w-md bg-white/10 backdrop-blur-xl p-10 rounded-3xl border border-white/20">
+          <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+            <div class="w-full max-w-md bg-white/5 backdrop-blur-xl p-10 rounded-3xl border border-white/10 shadow-2xl">
               <div class="text-center mb-8">
-                <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl mb-6 text-4xl shadow-lg">👤</div>
-                <h1 class="text-2xl font-bold text-white mb-2">신규 계정 등록</h1>
-                <p class="text-slate-400 text-sm">Create New Account</p>
+                <h1 class="text-xl font-bold text-white mb-2">계정 등록</h1>
+                <p class="text-slate-400 text-sm">신성오토텍 생산실 대시보드</p>
               </div>
               <div class="space-y-4">
                 <input type="text" id="displayNameInput" placeholder="이름 (선택사항)"
@@ -2482,12 +2481,11 @@
       }
 
       return `
-        <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-6">
-          <div class="w-full max-w-md bg-white/10 backdrop-blur-xl p-10 rounded-3xl border border-white/20">
+        <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+          <div class="w-full max-w-md bg-white/5 backdrop-blur-xl p-10 rounded-3xl border border-white/10 shadow-2xl">
             <div class="text-center mb-8">
-              <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl mb-6 text-4xl shadow-lg">🏭</div>
-              <h1 class="text-2xl font-bold text-white mb-2">생산실 통합 관리 시스템</h1>
-              <p class="text-slate-400 text-sm">Production Management System</p>
+              <h1 class="text-2xl font-bold text-white mb-2">신성오토텍</h1>
+              <p class="text-emerald-400 text-sm font-medium tracking-wide">생산실 대시보드</p>
             </div>
             <div class="space-y-4">
               <input type="email" id="emailInput" placeholder="이메일 주소"
@@ -2535,7 +2533,17 @@
           <!-- Main Navigation -->
           <nav class="bg-slate-900 px-6 py-3 flex items-center justify-between sticky top-0 z-50">
             <div class="flex items-center gap-8">
-              <h1 class="text-lg font-bold text-white tracking-tight">생산실 대시보드</h1>
+              <div class="flex items-center gap-3">
+                <div class="flex gap-0.5">
+                  <div class="w-1 h-4 bg-emerald-400 rounded-full opacity-70"></div>
+                  <div class="w-1 h-5 bg-emerald-500 rounded-full"></div>
+                  <div class="w-1 h-4 bg-emerald-400 rounded-full opacity-70"></div>
+                </div>
+                <div>
+                  <h1 class="text-sm font-bold text-white tracking-tight leading-none">신성오토텍</h1>
+                  <p class="text-[10px] text-emerald-400 font-medium tracking-wider">PRODUCTION</p>
+                </div>
+              </div>
               <div class="flex gap-1">
                 <button onclick="setTab('overview')" class="nav-btn ${state.activeTab === 'overview' ? 'active' : ''}">종합현황</button>
                 <button onclick="setTab('process')" class="nav-btn ${state.activeTab === 'process' ? 'active' : ''}">공정현황</button>
