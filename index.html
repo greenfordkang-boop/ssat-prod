@@ -1225,6 +1225,23 @@
 
         // TOTAL 행 제외, 공정이 있는 행만
         if (row['공정'] && row['공정'] !== '' && row['설비/LINE'] !== 'TOTAL') {
+          // 비가동 유형별 시간 파싱
+          const downtimeByType = {
+            moldChange: parseFloat(row['비가동시간(분)'] || row['금형교환']) || 0,         // 금형교환
+            setupWait: parseFloat(row['비가동시간(분)_1'] || row['조건설정대기']) || 0,    // 조건설정대기
+            setup: parseFloat(row['비가동시간(분)_2'] || row['조건설정']) || 0,            // 조건설정
+            materialChange: parseFloat(row['비가동시간(분)_3'] || row['원료교환/건조']) || 0, // 원료교환/건조
+            breakdown: parseFloat(row['비가동시간(분)_4'] || row['고장']) || 0,            // 고장
+            waiting: parseFloat(row['비가동시간(분)_5'] || row['대기']) || 0,              // 대기
+            maintenance: parseFloat(row['비가동시간(분)_6'] || row['정비']) || 0,          // 정비
+            other: 0  // 기타 (계산)
+          };
+
+          // 비가동합계에서 유형별 합계를 뺀 나머지를 기타로
+          const totalDowntime = parseFloat(row['비가동합계']) || 0;
+          const knownDowntime = Object.values(downtimeByType).reduce((a, b) => a + b, 0);
+          downtimeByType.other = Math.max(0, totalDowntime - knownDowntime);
+
           data.push({
             date: row['생산일자'] || '',
             process: row['공정'] || '',
@@ -1232,7 +1249,10 @@
             operatingTime: parseFloat(row['조업시간(분)']) || 0,
             runningTime: parseFloat(row['가동시간(분)']) || 0,
             timeAvailability: parseFloat(row['시간가동율(%)']) || 0,
-            equipmentAvailability: parseFloat(row['설비가동율(%)']) || 0
+            equipmentAvailability: parseFloat(row['설비가동율(%)']) || 0,
+            totalDowntime: totalDowntime,
+            plannedStop: parseFloat(row['계획정지합계']) || 0,
+            downtimeByType: downtimeByType
           });
         }
       }
@@ -6587,37 +6607,70 @@
         if (downtimeByEquipmentCanvas && state.availabilityData.length > 0) {
           try {
           if (charts.downtimeByEquipment) charts.downtimeByEquipment.destroy();
+
+          // 설비별 비가동 유형별 합계 계산
           const equipmentDowntime = {};
           state.availabilityData.forEach(d => {
             if (excludedProcesses.includes(d.process)) return;
             const key = `${d.process}_${d.equipment}`;
             if (!equipmentDowntime[key]) {
-              equipmentDowntime[key] = { process: d.process, equipment: d.equipment, totalDowntime: 0, totalOperating: 0 };
+              equipmentDowntime[key] = {
+                process: d.process,
+                equipment: d.equipment,
+                totalDowntime: 0,
+                totalOperating: 0,
+                // 비가동 유형별 합계
+                moldChange: 0,      // 금형교환
+                setupWait: 0,       // 조건설정대기
+                setup: 0,           // 조건설정
+                materialChange: 0,  // 원료교환/건조
+                breakdown: 0,       // 고장
+                waiting: 0,         // 대기
+                maintenance: 0,     // 정비
+                other: 0            // 기타
+              };
             }
             equipmentDowntime[key].totalDowntime += (d.operatingTime - d.runningTime);
             equipmentDowntime[key].totalOperating += d.operatingTime;
+
+            // 비가동 유형별 합산 (CSV에서 파싱된 데이터 사용)
+            if (d.downtimeByType) {
+              equipmentDowntime[key].moldChange += d.downtimeByType.moldChange || 0;
+              equipmentDowntime[key].setupWait += d.downtimeByType.setupWait || 0;
+              equipmentDowntime[key].setup += d.downtimeByType.setup || 0;
+              equipmentDowntime[key].materialChange += d.downtimeByType.materialChange || 0;
+              equipmentDowntime[key].breakdown += d.downtimeByType.breakdown || 0;
+              equipmentDowntime[key].waiting += d.downtimeByType.waiting || 0;
+              equipmentDowntime[key].maintenance += d.downtimeByType.maintenance || 0;
+              equipmentDowntime[key].other += d.downtimeByType.other || 0;
+            }
           });
 
           const topEquipment = Object.values(equipmentDowntime)
             .sort((a, b) => b.totalDowntime - a.totalDowntime)
             .slice(0, 10);
 
-          // 비가동 유형별 색상 및 비율 정의
+          // 비가동 유형별 색상 정의 (실제 데이터 기반)
           const downtimeTypes = [
-            { name: '고장', color: '#ef4444', ratio: 0.35 },      // 빨강
-            { name: '대기', color: '#f59e0b', ratio: 0.25 },      // 주황
-            { name: '정비/점검', color: '#3b82f6', ratio: 0.20 }, // 파랑
-            { name: '자재부족', color: '#8b5cf6', ratio: 0.12 },  // 보라
-            { name: '기타', color: '#6b7280', ratio: 0.08 }       // 회색
+            { name: '금형교환', key: 'moldChange', color: '#ef4444' },       // 빨강
+            { name: '조건설정대기', key: 'setupWait', color: '#f59e0b' },    // 주황
+            { name: '조건설정', key: 'setup', color: '#eab308' },            // 노랑
+            { name: '원료교환/건조', key: 'materialChange', color: '#22c55e' }, // 초록
+            { name: '고장', key: 'breakdown', color: '#dc2626' },            // 진빨강
+            { name: '대기', key: 'waiting', color: '#3b82f6' },              // 파랑
+            { name: '정비', key: 'maintenance', color: '#8b5cf6' },          // 보라
+            { name: '기타', key: 'other', color: '#6b7280' }                 // 회색
           ];
 
-          // 설비별 유형별 비가동시간 데이터 생성
-          const datasets = downtimeTypes.map(type => ({
+          // 데이터가 있는 유형만 필터링
+          const activeTypes = downtimeTypes.filter(type =>
+            topEquipment.some(e => (e[type.key] || 0) > 0)
+          );
+
+          // 설비별 유형별 비가동시간 데이터 생성 (실제 데이터)
+          const datasets = activeTypes.map(type => ({
             label: type.name,
-            data: topEquipment.map(e => {
-              const totalHours = e.totalDowntime / 60;
-              return parseFloat((totalHours * type.ratio).toFixed(1));
-            }),
+            data: topEquipment.map(e => parseFloat(((e[type.key] || 0) / 60).toFixed(1))),
             backgroundColor: type.color,
             borderRadius: 0,
             barPercentage: 0.75
@@ -6651,7 +6704,7 @@
                   }
                 },
                 datalabels: {
-                  display: (ctx) => ctx.datasetIndex === downtimeTypes.length - 1,
+                  display: (ctx) => ctx.datasetIndex === activeTypes.length - 1,
                   anchor: 'end',
                   align: 'right',
                   offset: 4,
