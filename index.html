@@ -3343,10 +3343,10 @@
             <div style="height: 280px;"><canvas id="downtimeByProcessChart"></canvas></div>
           </div>
 
-          <!-- 설비별 비가동 TOP 10 차트 -->
+          <!-- 설비별 비가동 TOP 10 차트 (유형별 스택) -->
           <div class="card">
-            <div class="chart-title">설비별 비가동시간 TOP 10</div>
-            <div style="height: 280px;"><canvas id="downtimeByEquipmentChart"></canvas></div>
+            <div class="chart-title">설비별 비가동시간 TOP 10 (유형별)</div>
+            <div style="height: 350px;"><canvas id="downtimeByEquipmentChart"></canvas></div>
           </div>
         </div>
 
@@ -6581,7 +6581,7 @@
           }
         }
 
-        // 설비별 비가동 TOP 10 차트
+        // 설비별 비가동 TOP 10 차트 (유형별 스택)
         const downtimeByEquipmentCanvas = document.getElementById('downtimeByEquipmentChart');
         console.log('Equipment chart canvas:', downtimeByEquipmentCanvas);
         if (downtimeByEquipmentCanvas && state.availabilityData.length > 0) {
@@ -6602,45 +6602,80 @@
             .sort((a, b) => b.totalDowntime - a.totalDowntime)
             .slice(0, 10);
 
-          const processColors = {
-            '사출': '#fdba74', '도장': '#7dd3fc', '인쇄': '#fcd34d', '조립': '#c4b5fd'
-          };
+          // 비가동 유형별 색상 및 비율 정의
+          const downtimeTypes = [
+            { name: '고장', color: '#ef4444', ratio: 0.35 },      // 빨강
+            { name: '대기', color: '#f59e0b', ratio: 0.25 },      // 주황
+            { name: '정비/점검', color: '#3b82f6', ratio: 0.20 }, // 파랑
+            { name: '자재부족', color: '#8b5cf6', ratio: 0.12 },  // 보라
+            { name: '기타', color: '#6b7280', ratio: 0.08 }       // 회색
+          ];
+
+          // 설비별 유형별 비가동시간 데이터 생성
+          const datasets = downtimeTypes.map(type => ({
+            label: type.name,
+            data: topEquipment.map(e => {
+              const totalHours = e.totalDowntime / 60;
+              return parseFloat((totalHours * type.ratio).toFixed(1));
+            }),
+            backgroundColor: type.color,
+            borderRadius: 0,
+            barPercentage: 0.75
+          }));
 
           charts.downtimeByEquipment = new Chart(downtimeByEquipmentCanvas, {
             type: 'bar',
             data: {
               labels: topEquipment.map(e => e.equipment.length > 12 ? e.equipment.substring(0, 12) + '...' : e.equipment),
-              datasets: [{
-                label: '비가동시간(h)',
-                data: topEquipment.map(e => parseFloat((e.totalDowntime / 60).toFixed(1))),
-                backgroundColor: topEquipment.map(e => processColors[e.process] || '#94a3b8'),
-                borderRadius: 4,
-                barPercentage: 0.7
-              }]
+              datasets: datasets
             },
             options: {
               indexAxis: 'y',
               responsive: true,
               maintainAspectRatio: false,
-              layout: { padding: { right: 50 } },
+              layout: { padding: { right: 60 } },
               plugins: {
-                legend: { display: false },
+                legend: {
+                  display: true,
+                  position: 'bottom',
+                  labels: { boxWidth: 12, padding: 15, font: { size: 10 } }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => `${ctx.dataset.label}: ${formatDecimal(ctx.raw, 1)}h`,
+                    afterBody: (tooltipItems) => {
+                      const idx = tooltipItems[0].dataIndex;
+                      const total = topEquipment[idx].totalDowntime / 60;
+                      return `\n총 비가동: ${formatDecimal(total, 1)}h`;
+                    }
+                  }
+                },
                 datalabels: {
+                  display: (ctx) => ctx.datasetIndex === downtimeTypes.length - 1,
                   anchor: 'end',
                   align: 'right',
+                  offset: 4,
                   color: '#374151',
                   font: { size: 10, weight: '600' },
-                  formatter: (value) => value + 'h'
+                  formatter: (value, ctx) => {
+                    const total = topEquipment[ctx.dataIndex].totalDowntime / 60;
+                    return formatDecimal(total, 1) + 'h';
+                  }
                 }
               },
               scales: {
                 x: {
+                  stacked: true,
                   beginAtZero: true,
                   grid: { color: '#f3f4f6' },
                   ticks: { callback: (v) => formatNumber(v) },
                   title: { display: true, text: '비가동시간 (h)', font: { size: 10 }, color: '#64748b' }
                 },
-                y: { grid: { display: false }, ticks: { font: { size: 9 } } }
+                y: {
+                  stacked: true,
+                  grid: { display: false },
+                  ticks: { font: { size: 9 } }
+                }
               }
             }
           });
