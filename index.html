@@ -769,8 +769,8 @@
       packagingStatusData: 'packaging_status_data'
     };
 
-    // JSONB로 저장해야 하는 테이블 (동적 컬럼)
-    const JSONB_TABLES = ['detail_data'];
+    // JSONB로 저장해야 하는 테이블 (동적 컬럼 또는 중첩 객체)
+    const JSONB_TABLES = ['detail_data', 'availability_data'];
 
     // 필드명 변환 (camelCase → snake_case)
     function toSnakeCase(obj) {
