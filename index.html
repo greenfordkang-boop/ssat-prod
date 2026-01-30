@@ -769,25 +769,40 @@
       packagingStatusData: 'packaging_status_data'
     };
 
-    // JSONB로 저장해야 하는 테이블 (동적 컬럼 또는 중첩 객체)
+    // JSONB로 저장해야 하는 테이블 (동적 컬럼 또는 중첩 객체 포함)
     const JSONB_TABLES = ['detail_data', 'availability_data'];
 
-    // 필드명 변환 (camelCase → snake_case)
+    // 필드명 변환 (camelCase → snake_case) - 중첩 객체는 JSON 문자열로 변환
     function toSnakeCase(obj) {
       const result = {};
       for (const key in obj) {
         const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        result[snakeKey] = obj[key];
+        const value = obj[key];
+        // 중첩 객체는 JSON 문자열로 변환
+        if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          result[snakeKey] = JSON.stringify(value);
+        } else {
+          result[snakeKey] = value;
+        }
       }
       return result;
     }
 
-    // 필드명 변환 (snake_case → camelCase)
+    // 필드명 변환 (snake_case → camelCase) - JSON 문자열은 객체로 파싱
     function toCamelCase(obj) {
       const result = {};
       for (const key in obj) {
         const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-        result[camelKey] = obj[key];
+        let value = obj[key];
+        // JSON 문자열인 경우 파싱 시도
+        if (typeof value === 'string' && value.startsWith('{') && value.endsWith('}')) {
+          try {
+            value = JSON.parse(value);
+          } catch (e) {
+            // 파싱 실패 시 원본 유지
+          }
+        }
+        result[camelKey] = value;
       }
       return result;
     }
