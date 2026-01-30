@@ -2023,6 +2023,12 @@
       return Number(num).toLocaleString();
     }
 
+    // 소수점 n자리 + 천단위 콤마
+    function formatDecimal(num, decimals = 1) {
+      if (num === null || num === undefined || isNaN(num)) return '0';
+      return Number(parseFloat(num).toFixed(decimals)).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+
     // 차트용 숫자: 천단위 콤마 (컴팩트)
     function formatCompact(num) {
       if (num === null || num === undefined || isNaN(num)) return '0';
@@ -2073,8 +2079,8 @@
           '<td class="text-center font-bold ' + rankClass + '">' + (idx + 1) + '</td>' +
           '<td class="font-medium">' + item.equipment + '</td>' +
           '<td class="text-slate-600">' + (item.partName || item.partCode || '-') + '</td>' +
-          '<td class="text-right">' + item.standardCT.toFixed(1) + 's</td>' +
-          '<td class="text-right">' + item.actualCT.toFixed(1) + 's</td>' +
+          '<td class="text-right">' + formatDecimal(item.standardCT, 1) + 's</td>' +
+          '<td class="text-right">' + formatDecimal(item.actualCT, 1) + 's</td>' +
           '<td class="text-right ' + effClass + '">' + formatPercent(item.efficiency) + '</td>' +
           '<td class="text-center">' + statusBadge + '</td>' +
           '</tr>';
@@ -3287,15 +3293,15 @@
         <!-- 전체 요약 카드 -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div class="card text-center" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-left: 4px solid #fca5a5;">
-            <div class="text-3xl font-bold text-red-700">${(totalStats.totalDowntime / 60).toFixed(1)}h</div>
+            <div class="text-3xl font-bold text-red-700">${formatDecimal(totalStats.totalDowntime / 60, 1)}h</div>
             <div class="text-sm text-red-600 mt-1">총 비가동시간</div>
           </div>
           <div class="card text-center" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-left: 4px solid #f59e0b;">
-            <div class="text-3xl font-bold text-amber-700">${totalStats.avgDowntimeRate.toFixed(1)}%</div>
+            <div class="text-3xl font-bold text-amber-700">${formatPercent(totalStats.avgDowntimeRate)}</div>
             <div class="text-sm text-amber-600 mt-1">평균 비가동율</div>
           </div>
           <div class="card text-center" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-left: 4px solid #3b82f6;">
-            <div class="text-3xl font-bold text-blue-700">${(100 - totalStats.avgDowntimeRate).toFixed(1)}%</div>
+            <div class="text-3xl font-bold text-blue-700">${formatPercent(100 - totalStats.avgDowntimeRate)}</div>
             <div class="text-sm text-blue-600 mt-1">평균 가동율</div>
           </div>
           <div class="card text-center" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); border-left: 4px solid #6366f1;">
@@ -3310,18 +3316,18 @@
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             ${processStats.map(p => {
               const colors = processColors[p.process] || { bg: 'bg-slate-100', border: 'border-slate-400', text: 'text-slate-700' };
-              const downtimeHours = (p.totalDowntime / 60).toFixed(1);
+              const downtimeHours = formatDecimal(p.totalDowntime / 60, 1);
               const barWidth = totalStats.totalDowntime > 0 ? (p.totalDowntime / totalStats.totalDowntime * 100) : 0;
               return `
                 <div class="p-4 rounded-xl ${colors.bg} border-l-4 ${colors.border}">
                   <div class="flex justify-between items-start mb-2">
                     <span class="font-bold ${colors.text}">${p.process}</span>
-                    <span class="text-xs px-2 py-1 rounded-full bg-white/60 ${colors.text}">${p.equipmentCount}설비</span>
+                    <span class="text-xs px-2 py-1 rounded-full bg-white/60 ${colors.text}">${formatNumber(p.equipmentCount)}설비</span>
                   </div>
                   <div class="text-2xl font-bold ${colors.text} mb-1">${downtimeHours}h</div>
-                  <div class="text-sm ${colors.text} opacity-75">비가동율 ${p.avgDowntimeRate.toFixed(1)}%</div>
+                  <div class="text-sm ${colors.text} opacity-75">비가동율 ${formatPercent(p.avgDowntimeRate)}</div>
                   <div class="mt-3 h-2 bg-white/50 rounded-full overflow-hidden">
-                    <div class="h-full rounded-full transition-all" style="width: ${barWidth}%; background: ${processColors[p.process]?.chart || '#64748b'}"></div>
+                    <div class="h-full rounded-full transition-all" style="width: ${barWidth.toFixed(1)}%; background: ${processColors[p.process]?.chart || '#64748b'}"></div>
                   </div>
                 </div>
               `;
@@ -3381,23 +3387,23 @@
                     return `
                       <tr>
                         <td class="font-medium ${colors.text}">${p.process}</td>
-                        <td class="text-right">${p.equipmentCount}</td>
-                        <td class="text-right">${(p.totalOperating / 60).toFixed(1)}</td>
-                        <td class="text-right">${(p.totalRunning / 60).toFixed(1)}</td>
-                        <td class="text-right font-medium text-red-600">${(p.totalDowntime / 60).toFixed(1)}</td>
-                        <td class="text-right ${downtimeRateClass}">${p.avgDowntimeRate.toFixed(1)}%</td>
-                        <td class="text-right text-blue-600">${p.avgAvailability.toFixed(1)}%</td>
+                        <td class="text-right">${formatNumber(p.equipmentCount)}</td>
+                        <td class="text-right">${formatDecimal(p.totalOperating / 60, 1)}</td>
+                        <td class="text-right">${formatDecimal(p.totalRunning / 60, 1)}</td>
+                        <td class="text-right font-medium text-red-600">${formatDecimal(p.totalDowntime / 60, 1)}</td>
+                        <td class="text-right ${downtimeRateClass}">${formatPercent(p.avgDowntimeRate)}</td>
+                        <td class="text-right text-blue-600">${formatPercent(p.avgAvailability)}</td>
                       </tr>
                     `;
                   }).join('')}
                   <tr class="bg-slate-100 font-bold">
                     <td>합계</td>
-                    <td class="text-right">${totalStats.totalEquipment}</td>
-                    <td class="text-right">${(totalStats.totalOperating / 60).toFixed(1)}</td>
-                    <td class="text-right">${((totalStats.totalOperating - totalStats.totalDowntime) / 60).toFixed(1)}</td>
-                    <td class="text-right text-red-600">${(totalStats.totalDowntime / 60).toFixed(1)}</td>
-                    <td class="text-right">${totalStats.avgDowntimeRate.toFixed(1)}%</td>
-                    <td class="text-right text-blue-600">${(100 - totalStats.avgDowntimeRate).toFixed(1)}%</td>
+                    <td class="text-right">${formatNumber(totalStats.totalEquipment)}</td>
+                    <td class="text-right">${formatDecimal(totalStats.totalOperating / 60, 1)}</td>
+                    <td class="text-right">${formatDecimal((totalStats.totalOperating - totalStats.totalDowntime) / 60, 1)}</td>
+                    <td class="text-right text-red-600">${formatDecimal(totalStats.totalDowntime / 60, 1)}</td>
+                    <td class="text-right">${formatPercent(totalStats.avgDowntimeRate)}</td>
+                    <td class="text-right text-blue-600">${formatPercent(100 - totalStats.avgDowntimeRate)}</td>
                 </tr>
               </tbody>
             </table>
@@ -3432,9 +3438,9 @@
                       <td class="text-center font-bold ${idx < 3 ? 'text-red-500' : 'text-slate-500'}">${idx + 1}</td>
                       <td class="${colors.text}">${e.process}</td>
                       <td class="font-medium">${e.equipment}</td>
-                      <td class="text-right font-medium text-red-600">${(e.totalDowntime / 60).toFixed(1)}</td>
-                      <td class="text-right">${(e.totalOperating / 60).toFixed(1)}</td>
-                      <td class="text-right">${e.downtimeRate.toFixed(1)}%</td>
+                      <td class="text-right font-medium text-red-600">${formatDecimal(e.totalDowntime / 60, 1)}</td>
+                      <td class="text-right">${formatDecimal(e.totalOperating / 60, 1)}</td>
+                      <td class="text-right">${formatPercent(e.downtimeRate)}</td>
                       <td>${statusBadge}</td>
                     </tr>
                   `;
@@ -3615,9 +3621,9 @@
                       <td class="text-right">
                         <div class="flex items-center justify-end gap-2">
                           <div class="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div class="h-full bg-teal-400 rounded-full" style="width: ${(t.value / totalValue * 100).toFixed(1)}%"></div>
+                            <div class="h-full bg-teal-400 rounded-full" style="width: ${formatDecimal(t.value / totalValue * 100, 1)}%"></div>
                           </div>
-                          <span class="text-sm">${(t.value / totalValue * 100).toFixed(1)}%</span>
+                          <span class="text-sm">${formatPercent(t.value / totalValue * 100)}</span>
                         </div>
                       </td>
                     </tr>
@@ -3669,7 +3675,7 @@
                       <td class="text-right text-teal-600">${formatNumber(s.stock)}</td>
                       <td class="text-right text-sky-600 font-semibold">${formatNumber(s.value)}</td>
                       <td class="text-right">${formatNumber(Math.round(s.value / s.stock))}</td>
-                      <td class="text-right">${(s.value / totalValue * 100).toFixed(1)}%</td>
+                      <td class="text-right">${formatPercent(s.value / totalValue * 100)}</td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -3792,9 +3798,9 @@
                       <td class="text-right">
                         <div class="flex items-center justify-end gap-2">
                           <div class="w-20 h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div class="h-full bg-amber-400 rounded-full" style="width: ${totalValue > 0 ? (r.value / totalValue * 100) : 0}%"></div>
+                            <div class="h-full bg-amber-400 rounded-full" style="width: ${totalValue > 0 ? formatDecimal(r.value / totalValue * 100, 1) : 0}%"></div>
                           </div>
-                          <span class="text-sm">${totalValue > 0 ? (r.value / totalValue * 100).toFixed(1) : 0}%</span>
+                          <span class="text-sm">${totalValue > 0 ? formatPercent(r.value / totalValue * 100) : '0.0%'}</span>
                         </div>
                       </td>
                     </tr>
@@ -3939,7 +3945,7 @@
               legend: { position: 'right', labels: { boxWidth: 12, padding: 8 } },
               tooltip: {
                 callbacks: {
-                  label: (ctx) => `${ctx.label}: ${formatNumber(ctx.raw)}원 (${(ctx.raw / totalValue * 100).toFixed(1)}%)`
+                  label: (ctx) => `${ctx.label}: ${formatNumber(ctx.raw)}원 (${formatPercent(ctx.raw / totalValue * 100)})`
                 }
               }
             }
@@ -4208,11 +4214,11 @@
           </div>
           <div class="stat-card">
             <div class="stat-label">평균 시간가동율</div>
-            <div class="stat-value text-slate-600">${oeeData.length > 0 ? (oeeData.reduce((sum, d) => sum + parseFloat(d.availability), 0) / oeeData.length).toFixed(1) : 0}%</div>
+            <div class="stat-value text-slate-600">${oeeData.length > 0 ? formatPercent(oeeData.reduce((sum, d) => sum + parseFloat(d.availability), 0) / oeeData.length) : '0.0%'}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">평균 성능가동율</div>
-            <div class="stat-value text-slate-600">${oeeData.length > 0 ? (oeeData.reduce((sum, d) => sum + parseFloat(d.performance), 0) / oeeData.length).toFixed(1) : 0}%</div>
+            <div class="stat-value text-slate-600">${oeeData.length > 0 ? formatPercent(oeeData.reduce((sum, d) => sum + parseFloat(d.performance), 0) / oeeData.length) : '0.0%'}</div>
           </div>
           <div class="stat-card blue">
             <div class="stat-label">평균 양품율</div>
@@ -4417,12 +4423,12 @@
               ${sortEquipments(equipments).map(eq => `
                 <tr>
                   <td class="font-medium">${eq.equipment}</td>
-                  <td class="text-right">${eq.production.toLocaleString()}</td>
-                  <td class="text-right text-blue-600">${eq.good.toLocaleString()}</td>
-                  <td class="text-right text-red-500">${eq.defect.toLocaleString()}</td>
+                  <td class="text-right">${formatNumber(eq.production)}</td>
+                  <td class="text-right text-blue-600">${formatNumber(eq.good)}</td>
+                  <td class="text-right text-red-500">${formatNumber(eq.defect)}</td>
                   <td class="text-right">
                     <span class="badge ${(eq.good/eq.production*100) >= 95 ? 'badge-success' : (eq.good/eq.production*100) >= 90 ? 'badge-warning' : 'badge-danger'}">
-                      ${(eq.good/eq.production*100).toFixed(1)}%
+                      ${formatPercent(eq.good/eq.production*100)}
                     </span>
                   </td>
                 </tr>
@@ -4481,7 +4487,7 @@
       }
 
       const ctDiff = ctStats.avgActualCT - ctStats.avgStandardCT;
-      const ctDiffText = ctDiff >= 0 ? `+${ctDiff.toFixed(1)}sec` : `${ctDiff.toFixed(1)}sec`;
+      const ctDiffText = ctDiff >= 0 ? `+${formatDecimal(ctDiff, 1)}sec` : `${formatDecimal(ctDiff, 1)}sec`;
       const efficiencyColor = ctStats.avgEfficiency >= 100 ? 'text-emerald-600' : ctStats.avgEfficiency >= 90 ? 'text-blue-600' : 'text-red-500';
 
       // 현재 공정에 데이터가 없는 경우
@@ -4501,16 +4507,16 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
             <div class="stat-card">
               <div class="stat-label">평균 실제 CT</div>
-              <div class="stat-value" style="color: ${processInfo.color}">${ctStats.avgActualCT > 0 ? ctStats.avgActualCT.toFixed(1) : '-'} sec</div>
+              <div class="stat-value" style="color: ${processInfo.color}">${ctStats.avgActualCT > 0 ? formatDecimal(ctStats.avgActualCT, 1) : '-'} sec</div>
               <div class="stat-sub">${ctStats.count > 0 ? `표준 CT 대비 ${ctDiffText}` : '데이터 없음'}</div>
             </div>
             <div class="stat-card">
               <div class="stat-label">평균 표준 CT</div>
-              <div class="stat-value text-slate-600">${ctStats.avgStandardCT > 0 ? ctStats.avgStandardCT.toFixed(1) : '-'} sec</div>
+              <div class="stat-value text-slate-600">${ctStats.avgStandardCT > 0 ? formatDecimal(ctStats.avgStandardCT, 1) : '-'} sec</div>
             </div>
             <div class="stat-card">
               <div class="stat-label">평균 CT 달성률</div>
-              <div class="stat-value ${efficiencyColor}">${ctStats.avgEfficiency > 0 ? ctStats.avgEfficiency.toFixed(1) : '-'}%</div>
+              <div class="stat-value ${efficiencyColor}">${ctStats.avgEfficiency > 0 ? formatPercent(ctStats.avgEfficiency) : '-'}</div>
             </div>
           </div>
           <div class="chart-card mb-6">
@@ -4655,7 +4661,7 @@
           </div>
           <div class="stat-card">
             <div class="stat-label">수리율</div>
-            <div class="stat-value text-emerald-600">${totalDefect > 0 ? (totalRepair / totalDefect * 100).toFixed(1) : 0}%</div>
+            <div class="stat-value text-emerald-600">${totalDefect > 0 ? formatPercent(totalRepair / totalDefect * 100) : '0.0%'}</div>
             <div class="stat-sub">수리 / 불량</div>
           </div>
         </div>
@@ -4724,7 +4730,7 @@
                       <td class="text-right font-semibold text-red-600">${formatNumber(item.defect)}</td>
                       <td class="text-right text-purple-600">${formatNumber(item.repair)}</td>
                       <td class="text-right text-orange-600">${formatNumber(item.disposal)}</td>
-                      <td class="text-right">${item.defect > 0 ? (item.repair / item.defect * 100).toFixed(1) : 0}%</td>
+                      <td class="text-right">${item.defect > 0 ? formatPercent(item.repair / item.defect * 100) : '0.0%'}</td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -4761,7 +4767,7 @@
       // 통계 계산
       const totalProduction = repairData.reduce((sum, d) => sum + d.productionQty, 0);
       const totalRepair = repairData.reduce((sum, d) => sum + d.repairQty, 0);
-      const repairRate = totalProduction > 0 ? (totalRepair / totalProduction * 100).toFixed(1) : 0;
+      const repairRate = totalProduction > 0 ? formatPercent(totalRepair / totalProduction * 100) : '0.0%';
       const uniqueParts = new Set(repairData.map(d => d.partCode)).size;
       const uniqueDates = new Set(repairData.map(d => d.date)).size;
 
@@ -4812,7 +4818,7 @@
           </div>
           <div class="stat-card red">
             <div class="stat-label">수리율</div>
-            <div class="stat-value text-red-500">${repairRate}%</div>
+            <div class="stat-value text-red-500">${repairRate}</div>
             <div class="stat-sub">수리 / 생산</div>
           </div>
           <div class="stat-card">
@@ -4875,7 +4881,7 @@
                       <td class="text-right text-indigo-600 font-semibold">${formatNumber(p.totalRepair)}</td>
                       <td class="text-right">
                         <span class="badge ${p.repairRate >= 10 ? 'badge-danger' : p.repairRate >= 5 ? 'badge-warning' : 'badge-success'}">
-                          ${p.repairRate.toFixed(1)}%
+                          ${formatPercent(p.repairRate)}
                         </span>
                       </td>
                     </tr>
@@ -5467,7 +5473,7 @@
       const totalDefects = defectData.reduce((sum, d) => sum + (d.defectTotal || 0), 0);
       const uniqueParts = new Set(defectData.map(d => d.partCode)).size;
       const uniqueDates = new Set(defectData.map(d => d.date)).size;
-      const avgDefectPerPart = uniqueParts > 0 ? (totalDefects / uniqueParts).toFixed(1) : 0;
+      const avgDefectPerPart = uniqueParts > 0 ? formatDecimal(totalDefects / uniqueParts, 1) : '0';
 
       // 공정별 불량 집계
       const processDefects = {};
@@ -5638,7 +5644,7 @@
                     </thead>
                     <tbody>
                       ${topDefectTypes.map((t, idx) => {
-                        const pct = totalDefects > 0 ? ((t.total / totalDefects) * 100).toFixed(1) : 0;
+                        const pctVal = totalDefects > 0 ? (t.total / totalDefects) * 100 : 0;
                         return `
                           <tr>
                             <td class="text-center font-bold ${idx < 3 ? 'text-red-500' : 'text-slate-500'}">${idx + 1}</td>
@@ -5647,9 +5653,9 @@
                             <td class="text-right">
                               <div class="flex items-center justify-end gap-2">
                                 <div class="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                  <div class="h-full bg-red-400 rounded-full" style="width: ${Math.min(pct * 2, 100)}%"></div>
+                                  <div class="h-full bg-red-400 rounded-full" style="width: ${Math.min(pctVal * 2, 100)}%"></div>
                                 </div>
-                                <span class="text-sm text-slate-600">${pct}%</span>
+                                <span class="text-sm text-slate-600">${formatPercent(pctVal)}</span>
                               </div>
                             </td>
                           </tr>
@@ -6361,9 +6367,9 @@
                   font: { size: 9, weight: '600' },
                   formatter: (value, ctx) => {
                     if (ctx.datasetIndex === 0) {
-                      return efficiencyData[ctx.dataIndex] + '%';
+                      return formatPercent(parseFloat(efficiencyData[ctx.dataIndex]));
                     }
-                    return parseFloat(value) > 0 ? value + 's' : '';
+                    return parseFloat(value) > 0 ? formatDecimal(value, 1) + 's' : '';
                   },
                   backgroundColor: (ctx) => ctx.datasetIndex === 1 ? 'rgba(255,255,255,0.8)' : 'transparent',
                   borderRadius: 3,
@@ -6546,7 +6552,7 @@
                   align: 'top',
                   color: '#374151',
                   font: { size: 11, weight: '600' },
-                  formatter: (value) => value + 'h'
+                  formatter: (value) => formatDecimal(value, 1) + 'h'
                 }
               },
               scales: {
