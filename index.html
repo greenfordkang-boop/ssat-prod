@@ -453,8 +453,15 @@
     const SUPABASE_URL = 'https://gipksxojxdkqpyyiihcc.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdpcGtzeG9qeGRrcXB5eWlpaGNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2OTExOTQsImV4cCI6MjA4NTI2NzE5NH0.ZE7kpdUUEW--Ggum7s3f6OJ4bm7CdKkW3yuAZldgrqg';
 
-    // Supabase 클라이언트 초기화
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Supabase 클라이언트 초기화 (sessionStorage 사용 - 브라우저 종료 시 세션 삭제)
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        storage: window.sessionStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    });
 
     // Supabase 연결 상태
     let supabaseConnected = false;
@@ -7048,6 +7055,10 @@
 
     // 초기화
     async function initApp() {
+      // 기존 localStorage의 Supabase 세션 정리 (sessionStorage로 전환했으므로)
+      const oldKeys = Object.keys(localStorage).filter(k => k.startsWith('sb-') || k.includes('supabase'));
+      oldKeys.forEach(k => localStorage.removeItem(k));
+
       // Supabase 연결 테스트
       await testSupabaseConnection();
 
