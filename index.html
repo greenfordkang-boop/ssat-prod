@@ -2126,13 +2126,13 @@
             '<table class="data-table w-full">' +
               '<thead>' +
                 '<tr>' +
-                  '<th class="text-center" style="width: 50px;">순위</th>' +
-                  '<th class="text-left sortable" data-sort="equipment" data-type="equipment">설비명</th>' +
-                  '<th class="text-left sortable" data-type="string">부품명</th>' +
-                  '<th class="text-right sortable" data-type="number">표준CT</th>' +
-                  '<th class="text-right sortable" data-type="number">실적CT</th>' +
-                  '<th class="text-right sortable" data-type="number">달성률</th>' +
-                  '<th class="text-center">상태</th>' +
+                  '<th class="text-center sortable" data-type="number" data-col="0" style="width: 50px;">순위</th>' +
+                  '<th class="text-left sortable" data-type="equipment" data-col="1">설비명</th>' +
+                  '<th class="text-left sortable" data-type="string" data-col="2">부품명</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="3">표준CT</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="4">실적CT</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="5">달성률</th>' +
+                  '<th class="text-center sortable" data-type="string" data-col="6">상태</th>' +
                 '</tr>' +
               '</thead>' +
               '<tbody>' + rows + '</tbody>' +
@@ -2227,16 +2227,16 @@
             '<table class="data-table w-full">' +
               '<thead>' +
                 '<tr>' +
-                  '<th class="text-center" style="width: 50px;">순위</th>' +
-                  '<th class="text-left sortable" data-type="string">품목명</th>' +
-                  '<th class="text-left sortable" data-type="string">공정</th>' +
-                  '<th class="text-right sortable" data-type="number">생산수량</th>' +
-                  '<th class="text-right sortable" data-type="number">양품수량</th>' +
-                  '<th class="text-right sortable" data-type="number">불량수량</th>' +
-                  '<th class="text-right sortable" data-type="number">불량금액</th>' +
-                  '<th class="text-right sortable" data-type="number">불량율</th>' +
-                  '<th class="text-right sortable" data-type="number">수율</th>' +
-                  '<th class="text-center">상태</th>' +
+                  '<th class="text-center sortable" data-type="number" data-col="0" style="width: 50px;">순위</th>' +
+                  '<th class="text-left sortable" data-type="string" data-col="1">품목명</th>' +
+                  '<th class="text-left sortable" data-type="string" data-col="2">공정</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="3">생산수량</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="4">양품수량</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="5">불량수량</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="6">불량금액</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="7">불량율</th>' +
+                  '<th class="text-right sortable" data-type="number" data-col="8">수율</th>' +
+                  '<th class="text-center sortable" data-type="string" data-col="9">상태</th>' +
                 '</tr>' +
               '</thead>' +
               '<tbody>' + rows + '</tbody>' +
@@ -2468,44 +2468,71 @@
     // 테이블 정렬 기능
     function initTableSort() {
       document.querySelectorAll('.data-table').forEach(table => {
-        const headers = table.querySelectorAll('th.sortable');
-        headers.forEach(header => {
-          header.addEventListener('click', () => {
-            const sortKey = header.dataset.sort;
-            const sortType = header.dataset.type;
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            const isAsc = header.classList.contains('asc');
+        // 이벤트 위임 방식으로 변경 (thead에 한 번만 바인딩)
+        const thead = table.querySelector('thead');
+        if (!thead) return;
 
-            // 정렬 방향 토글
-            headers.forEach(h => h.classList.remove('asc', 'desc'));
-            header.classList.add(isAsc ? 'desc' : 'asc');
+        // 기존 핸들러 제거 후 새로 바인딩
+        thead.onclick = function(e) {
+          const clickedTh = e.target.closest('th.sortable');
+          if (!clickedTh) return;
 
-            // 정렬 수행
-            rows.sort((a, b) => {
-              let aVal, bVal;
-              const colIndex = Array.from(headers).indexOf(header);
-              const aCell = a.cells[colIndex];
-              const bCell = b.cells[colIndex];
+          const sortType = clickedTh.dataset.type || 'string';
+          const headerRow = clickedTh.parentElement;
+          const tbody = table.querySelector('tbody');
+          if (!headerRow || !tbody) return;
 
-              if (sortType === 'number') {
-                aVal = parseFloat(aCell.textContent.replace(/[,%]/g, '')) || 0;
-                bVal = parseFloat(bCell.textContent.replace(/[,%]/g, '')) || 0;
-              } else if (sortType === 'equipment') {
-                const aNum = parseInt(aCell.textContent.match(/(\d+)호기/)?.[1] || '999');
-                const bNum = parseInt(bCell.textContent.match(/(\d+)호기/)?.[1] || '999');
-                aVal = aNum; bVal = bNum;
-              } else {
-                aVal = aCell.textContent; bVal = bCell.textContent;
-              }
+          // 컬럼 인덱스: data-col 속성 우선, 없으면 DOM 위치로 계산
+          let colIndex;
+          if (clickedTh.dataset.col !== undefined) {
+            colIndex = parseInt(clickedTh.dataset.col);
+          } else {
+            const siblings = Array.from(headerRow.children);
+            colIndex = siblings.indexOf(clickedTh);
+          }
+          if (colIndex === -1 || isNaN(colIndex)) return;
 
-              if (isAsc) return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
-              return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-            });
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const isAsc = clickedTh.classList.contains('asc');
 
-            rows.forEach(row => tbody.appendChild(row));
+          // 정렬 방향 토글
+          headerRow.querySelectorAll('th').forEach(h => h.classList.remove('asc', 'desc'));
+          clickedTh.classList.add(isAsc ? 'desc' : 'asc');
+
+          // 정렬 수행
+          rows.sort((a, b) => {
+            const aCell = a.cells[colIndex];
+            const bCell = b.cells[colIndex];
+
+            if (!aCell || !bCell) return 0;
+
+            let aVal, bVal;
+
+            if (sortType === 'number') {
+              aVal = parseFloat(aCell.textContent.replace(/[,%s초]/g, '')) || 0;
+              bVal = parseFloat(bCell.textContent.replace(/[,%s초]/g, '')) || 0;
+            } else if (sortType === 'equipment') {
+              const aMatch = aCell.textContent.match(/(\d+)호기/);
+              const bMatch = bCell.textContent.match(/(\d+)호기/);
+              aVal = aMatch ? parseInt(aMatch[1]) : 999;
+              bVal = bMatch ? parseInt(bMatch[1]) : 999;
+            } else {
+              aVal = aCell.textContent.trim().toLowerCase();
+              bVal = bCell.textContent.trim().toLowerCase();
+            }
+
+            let result;
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+              result = aVal - bVal;
+            } else {
+              result = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+            }
+
+            return isAsc ? -result : result;
           });
-        });
+
+          rows.forEach(row => tbody.appendChild(row));
+        };
       });
     }
 
@@ -3139,9 +3166,9 @@
             <table class="data-table" style="margin: 0;">
               <thead>
                 <tr>
-                  <th class="sortable" data-sort="type" data-type="text">데이터 유형</th>
-                  <th class="sortable text-right" data-sort="count" data-type="number">건수</th>
-                  <th class="sortable" data-sort="status" data-type="text">상태</th>
+                  <th class="sortable" data-type="string" data-col="0">데이터 유형</th>
+                  <th class="sortable text-right" data-type="number" data-col="1">건수</th>
+                  <th class="sortable" data-type="string" data-col="2">상태</th>
                   <th class="text-center" style="width: 80px;">관리</th>
                 </tr>
               </thead>
@@ -3390,13 +3417,13 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th class="sortable" data-type="string">공정</th>
-                    <th class="sortable text-right" data-type="number">설비수</th>
-                    <th class="sortable text-right" data-type="number">조업시간(h)</th>
-                    <th class="sortable text-right" data-type="number">가동시간(h)</th>
-                    <th class="sortable text-right" data-type="number">비가동시간(h)</th>
-                    <th class="sortable text-right" data-type="number">비가동율</th>
-                    <th class="sortable text-right" data-type="number">가동율</th>
+                    <th class="sortable" data-type="string" data-col="0">공정</th>
+                    <th class="sortable text-right" data-type="number" data-col="1">설비수</th>
+                    <th class="sortable text-right" data-type="number" data-col="2">조업시간(h)</th>
+                    <th class="sortable text-right" data-type="number" data-col="3">가동시간(h)</th>
+                    <th class="sortable text-right" data-type="number" data-col="4">비가동시간(h)</th>
+                    <th class="sortable text-right" data-type="number" data-col="5">비가동율</th>
+                    <th class="sortable text-right" data-type="number" data-col="6">가동율</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3438,13 +3465,13 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th class="sortable text-center" data-sort="rank" data-type="number" style="width: 60px;">순위</th>
-                  <th class="sortable" data-sort="process" data-type="text">공정</th>
-                  <th class="sortable" data-sort="equipment" data-type="equipment">설비명</th>
-                  <th class="sortable text-right" data-sort="downtime" data-type="number">비가동시간(h)</th>
-                  <th class="sortable text-right" data-sort="operating" data-type="number">조업시간(h)</th>
-                  <th class="sortable text-right" data-sort="rate" data-type="number">비가동율</th>
-                  <th class="sortable" data-sort="status" data-type="text">상태</th>
+                  <th class="sortable text-center" data-type="number" data-col="0" style="width: 60px;">순위</th>
+                  <th class="sortable" data-type="string" data-col="1">공정</th>
+                  <th class="sortable" data-type="equipment" data-col="2">설비명</th>
+                  <th class="sortable text-right" data-type="number" data-col="3">비가동시간(h)</th>
+                  <th class="sortable text-right" data-type="number" data-col="4">조업시간(h)</th>
+                  <th class="sortable text-right" data-type="number" data-col="5">비가동율</th>
+                  <th class="sortable" data-type="string" data-col="6">상태</th>
                 </tr>
               </thead>
               <tbody>
@@ -3622,12 +3649,12 @@
               <table class="data-table w-full">
                 <thead>
                   <tr>
-                    <th class="text-left sortable" data-type="string">품목유형</th>
-                    <th class="text-right sortable" data-type="number">품목수</th>
-                    <th class="text-right sortable" data-type="number">재고수량</th>
-                    <th class="text-right sortable" data-type="number">재고금액</th>
-                    <th class="text-right sortable" data-type="number">평균단가</th>
-                    <th class="text-right sortable" data-type="number">구성비</th>
+                    <th class="text-left sortable" data-type="string" data-col="0">품목유형</th>
+                    <th class="text-right sortable" data-type="number" data-col="1">품목수</th>
+                    <th class="text-right sortable" data-type="number" data-col="2">재고수량</th>
+                    <th class="text-right sortable" data-type="number" data-col="3">재고금액</th>
+                    <th class="text-right sortable" data-type="number" data-col="4">평균단가</th>
+                    <th class="text-right sortable" data-type="number" data-col="5">구성비</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3679,12 +3706,12 @@
               <table class="data-table w-full">
                 <thead>
                   <tr>
-                    <th class="text-left sortable" data-type="string">규격</th>
-                    <th class="text-right sortable" data-type="number">품목수</th>
-                    <th class="text-right sortable" data-type="number">재고수량</th>
-                    <th class="text-right sortable" data-type="number">재고금액</th>
-                    <th class="text-right sortable" data-type="number">평균단가</th>
-                    <th class="text-right sortable" data-type="number">구성비</th>
+                    <th class="text-left sortable" data-type="string" data-col="0">규격</th>
+                    <th class="text-right sortable" data-type="number" data-col="1">품목수</th>
+                    <th class="text-right sortable" data-type="number" data-col="2">재고수량</th>
+                    <th class="text-right sortable" data-type="number" data-col="3">재고금액</th>
+                    <th class="text-right sortable" data-type="number" data-col="4">평균단가</th>
+                    <th class="text-right sortable" data-type="number" data-col="5">구성비</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3801,11 +3828,11 @@
               <table class="data-table w-full">
                 <thead>
                   <tr>
-                    <th class="text-left sortable" data-type="string">단가 구간</th>
-                    <th class="text-right sortable" data-type="number">품목수</th>
-                    <th class="text-right sortable" data-type="number">재고수량</th>
-                    <th class="text-right sortable" data-type="number">재고금액</th>
-                    <th class="text-right sortable" data-type="number">구성비</th>
+                    <th class="text-left sortable" data-type="string" data-col="0">단가 구간</th>
+                    <th class="text-right sortable" data-type="number" data-col="1">품목수</th>
+                    <th class="text-right sortable" data-type="number" data-col="2">재고수량</th>
+                    <th class="text-right sortable" data-type="number" data-col="3">재고금액</th>
+                    <th class="text-right sortable" data-type="number" data-col="4">구성비</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3849,11 +3876,11 @@
                 <table class="data-table w-full">
                   <thead class="sticky top-0 bg-white">
                     <tr>
-                      <th class="text-center sortable" data-type="number" style="width: 40px;">순위</th>
-                      <th class="text-left sortable" data-type="string">품목명</th>
-                      <th class="text-right sortable" data-type="number">단가</th>
-                      <th class="text-right sortable" data-type="number">재고</th>
-                      <th class="text-right sortable" data-type="number">금액</th>
+                      <th class="text-center sortable" data-type="number" data-col="0" style="width: 40px;">순위</th>
+                      <th class="text-left sortable" data-type="string" data-col="1">품목명</th>
+                      <th class="text-right sortable" data-type="number" data-col="2">단가</th>
+                      <th class="text-right sortable" data-type="number" data-col="3">재고</th>
+                      <th class="text-right sortable" data-type="number" data-col="4">금액</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3888,11 +3915,11 @@
                 <table class="data-table w-full">
                   <thead class="sticky top-0 bg-white">
                     <tr>
-                      <th class="text-center sortable" data-type="number" style="width: 40px;">순위</th>
-                      <th class="text-left sortable" data-type="string">품목명</th>
-                      <th class="text-right sortable" data-type="number">단가</th>
-                      <th class="text-right sortable" data-type="number">재고</th>
-                      <th class="text-right sortable" data-type="number">금액</th>
+                      <th class="text-center sortable" data-type="number" data-col="0" style="width: 40px;">순위</th>
+                      <th class="text-left sortable" data-type="string" data-col="1">품목명</th>
+                      <th class="text-right sortable" data-type="number" data-col="2">단가</th>
+                      <th class="text-right sortable" data-type="number" data-col="3">재고</th>
+                      <th class="text-right sortable" data-type="number" data-col="4">금액</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4271,13 +4298,13 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th class="sortable" data-sort="process" data-type="text">공정</th>
-                  <th class="sortable text-right" data-sort="production" data-type="number">생산수량</th>
-                  <th class="sortable text-right" data-sort="good" data-type="number">양품수량</th>
-                  <th class="sortable text-right" data-sort="availability" data-type="number">시간가동율</th>
-                  <th class="sortable text-right" data-sort="performance" data-type="number">성능가동율</th>
-                  <th class="sortable text-right" data-sort="quality" data-type="number">양품율</th>
-                  <th class="sortable text-right" data-sort="oee" data-type="number">종합효율(OEE)</th>
+                  <th class="sortable" data-type="string" data-col="0">공정</th>
+                  <th class="sortable text-right" data-type="number" data-col="1">생산수량</th>
+                  <th class="sortable text-right" data-type="number" data-col="2">양품수량</th>
+                  <th class="sortable text-right" data-type="number" data-col="3">시간가동율</th>
+                  <th class="sortable text-right" data-type="number" data-col="4">성능가동율</th>
+                  <th class="sortable text-right" data-type="number" data-col="5">양품율</th>
+                  <th class="sortable text-right" data-type="number" data-col="6">종합효율(OEE)</th>
                 </tr>
               </thead>
               <tbody>
@@ -4432,11 +4459,11 @@
           <table class="data-table" id="equipmentTable">
             <thead>
               <tr>
-                <th class="sortable" data-sort="equipment" data-type="equipment">설비/LINE</th>
-                <th class="sortable text-right" data-sort="production" data-type="number">생산수량</th>
-                <th class="sortable text-right" data-sort="good" data-type="number">양품수량</th>
-                <th class="sortable text-right" data-sort="defect" data-type="number">불량수량</th>
-                <th class="sortable text-right" data-sort="yield" data-type="number">수율</th>
+                <th class="sortable" data-type="equipment" data-col="0">설비/LINE</th>
+                <th class="sortable text-right" data-type="number" data-col="1">생산수량</th>
+                <th class="sortable text-right" data-type="number" data-col="2">양품수량</th>
+                <th class="sortable text-right" data-type="number" data-col="3">불량수량</th>
+                <th class="sortable text-right" data-type="number" data-col="4">수율</th>
               </tr>
             </thead>
             <tbody>
@@ -4732,13 +4759,13 @@
               <table class="data-table w-full">
                 <thead>
                   <tr>
-                    <th class="text-left sortable" data-type="number">순위</th>
-                    <th class="text-left sortable" data-type="string">품목코드</th>
-                    <th class="text-left sortable" data-type="string">품목명</th>
-                    <th class="text-right sortable" data-type="number">불량수량</th>
-                    <th class="text-right sortable" data-type="number">수리수량</th>
-                    <th class="text-right sortable" data-type="number">폐기수량</th>
-                    <th class="text-right sortable" data-type="number">수리율</th>
+                    <th class="text-left sortable" data-type="number" data-col="0">순위</th>
+                    <th class="text-left sortable" data-type="string" data-col="1">품목코드</th>
+                    <th class="text-left sortable" data-type="string" data-col="2">품목명</th>
+                    <th class="text-right sortable" data-type="number" data-col="3">불량수량</th>
+                    <th class="text-right sortable" data-type="number" data-col="4">수리수량</th>
+                    <th class="text-right sortable" data-type="number" data-col="5">폐기수량</th>
+                    <th class="text-right sortable" data-type="number" data-col="6">수리율</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4883,12 +4910,12 @@
               <table class="data-table" id="repairDetailTable">
                 <thead>
                   <tr>
-                    <th class="sortable" data-sort="partCode" data-type="text">부품코드</th>
-                    <th class="sortable" data-sort="partName" data-type="text">부품명</th>
-                    <th class="sortable" data-sort="spec" data-type="text">규격</th>
-                    <th class="sortable text-right" data-sort="production" data-type="number">생산수량</th>
-                    <th class="sortable text-right" data-sort="repair" data-type="number">수리수량</th>
-                    <th class="sortable text-right" data-sort="rate" data-type="number">수리율</th>
+                    <th class="sortable" data-type="string" data-col="0">부품코드</th>
+                    <th class="sortable" data-type="string" data-col="1">부품명</th>
+                    <th class="sortable" data-type="string" data-col="2">규격</th>
+                    <th class="sortable text-right" data-type="number" data-col="3">생산수량</th>
+                    <th class="sortable text-right" data-type="number" data-col="4">수리수량</th>
+                    <th class="sortable text-right" data-type="number" data-col="5">수리율</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5656,10 +5683,10 @@
                   <table class="data-table">
                     <thead>
                       <tr>
-                        <th class="sortable" data-type="number" style="width: 50px;">순위</th>
-                        <th class="sortable" data-type="string">불량유형</th>
-                        <th class="text-right sortable" data-type="number">수량</th>
-                        <th class="text-right sortable" data-type="number">비율</th>
+                        <th class="sortable" data-type="number" data-col="0" style="width: 50px;">순위</th>
+                        <th class="sortable" data-type="string" data-col="1">불량유형</th>
+                        <th class="text-right sortable" data-type="number" data-col="2">수량</th>
+                        <th class="text-right sortable" data-type="number" data-col="3">비율</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5754,12 +5781,12 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th class="sortable" data-type="string">부품코드</th>
-                    <th class="sortable" data-type="string">고객사 P/N</th>
-                    <th class="sortable" data-type="string">부품명</th>
-                    <th class="sortable" data-type="string">규격</th>
-                    <th class="sortable" data-type="string">생산일자</th>
-                    <th class="sortable text-right" data-type="number">불량합계</th>
+                    <th class="sortable" data-type="string" data-col="0">부품코드</th>
+                    <th class="sortable" data-type="string" data-col="1">고객사 P/N</th>
+                    <th class="sortable" data-type="string" data-col="2">부품명</th>
+                    <th class="sortable" data-type="string" data-col="3">규격</th>
+                    <th class="sortable" data-type="string" data-col="4">생산일자</th>
+                    <th class="sortable text-right" data-type="number" data-col="5">불량합계</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5923,9 +5950,9 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th class="sortable bg-slate-100 font-bold" data-sort="row" data-type="text">${state.pivot.rows} \\ ${state.pivot.cols}</th>
-                      ${pivotResult.cols.map((c, idx) => `<th class="sortable text-right bg-slate-50" data-sort="col${idx}" data-type="number">${c}</th>`).join('')}
-                      <th class="sortable text-right bg-blue-50 text-blue-700 font-bold" data-sort="total" data-type="number">합계</th>
+                      <th class="sortable bg-slate-100 font-bold" data-type="string" data-col="0">${state.pivot.rows} \\ ${state.pivot.cols}</th>
+                      ${pivotResult.cols.map((c, idx) => `<th class="sortable text-right bg-slate-50" data-type="number" data-col="${idx + 1}">${c}</th>`).join('')}
+                      <th class="sortable text-right bg-blue-50 text-blue-700 font-bold" data-type="number" data-col="${pivotResult.cols.length + 1}">합계</th>
                     </tr>
                   </thead>
                 <tbody>
