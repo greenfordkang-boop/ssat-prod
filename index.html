@@ -1948,6 +1948,34 @@
       return result;
     }
 
+    // 날짜에서 연도와 월 추출 (다양한 형식 지원: YYYY-MM-DD, YYYY/MM/DD, MM/DD/YYYY 등)
+    function extractYearMonth(dateStr) {
+      if (!dateStr) return { year: null, month: null };
+      const str = String(dateStr);
+      let year = null, month = null;
+
+      if (str.includes('-')) {
+        const parts = str.split('-');
+        if (parts[0].length === 4) {
+          // YYYY-MM-DD 형식
+          year = parseInt(parts[0]) || null;
+          month = parseInt(parts[1]) || null;
+        }
+      } else if (str.includes('/')) {
+        const parts = str.split('/');
+        if (parts[0].length === 4) {
+          // YYYY/MM/DD 형식
+          year = parseInt(parts[0]) || null;
+          month = parseInt(parts[1]) || null;
+        } else if (parts[2] && parts[2].length === 4) {
+          // MM/DD/YYYY 형식
+          year = parseInt(parts[2]) || null;
+          month = parseInt(parts[0]) || null;
+        }
+      }
+      return { year, month };
+    }
+
     // 월별 OEE 데이터 계산 (1월~12월 전체)
     // 각 월별로 해당 월의 가동율 데이터를 개별적으로 사용
     function getMonthlyOEEData(data) {
@@ -1960,7 +1988,8 @@
       // 데이터에서 연도 추출 (없으면 현재 연도)
       let year = new Date().getFullYear();
       if (data.length > 0 && data[0].date) {
-        year = parseInt(data[0].date.substring(0, 4)) || year;
+        const extracted = extractYearMonth(data[0].date);
+        if (extracted.year) year = extracted.year;
       }
 
       // 1월~12월 모든 월 초기화
@@ -1970,22 +1999,38 @@
         allMonths[monthStr] = { month: monthStr, label: `${m}월`, monthNum: m, production: 0, good: 0, standard: 0, hasData: false };
       }
 
-      // 데이터가 있는 월 채우기
+      // 생산 데이터가 있는 월 채우기 (다양한 날짜 형식 지원)
       data.forEach(row => {
         if (!row.date) return;
-        const month = row.date.substring(0, 7); // YYYY-MM
-        if (allMonths[month]) {
-          allMonths[month].production += row.productionQty;
-          allMonths[month].good += row.goodQty;
-          allMonths[month].standard += row.standardQty;
-          allMonths[month].hasData = true;
+        const { year: rowYear, month: rowMonth } = extractYearMonth(row.date);
+        if (rowMonth) {
+          const monthStr = `${rowYear || year}-${String(rowMonth).padStart(2, '0')}`;
+          if (allMonths[monthStr]) {
+            allMonths[monthStr].production += row.productionQty;
+            allMonths[monthStr].good += row.goodQty;
+            allMonths[monthStr].standard += row.standardQty;
+            allMonths[monthStr].hasData = true;
+          }
+        }
+      });
+
+      // 가동율 데이터가 있는 월도 체크 (생산 데이터 없어도 가동율 있으면 표시)
+      state.availabilityData.forEach(row => {
+        if (!row.date) return;
+        const { year: rowYear, month: rowMonth } = extractYearMonth(row.date);
+        if (rowMonth) {
+          const monthStr = `${rowYear || year}-${String(rowMonth).padStart(2, '0')}`;
+          if (allMonths[monthStr] && !allMonths[monthStr].hasData) {
+            allMonths[monthStr].hasAvailabilityData = true;
+          }
         }
       });
 
       return Object.values(allMonths)
         .sort((a, b) => a.month.localeCompare(b.month))
         .map(d => {
-          if (!d.hasData) {
+          // 생산 데이터도 없고 가동율 데이터도 없으면 null
+          if (!d.hasData && !d.hasAvailabilityData) {
             return { ...d, availability: null, performance: null, quality: null, oee: null };
           }
 
@@ -2001,6 +2046,7 @@
           }
           availability = Math.min(availability, 100);
 
+          // 생산 데이터가 없으면 성능가동율, 양품율은 0
           const performance = d.standard > 0 ? Math.min((d.production / d.standard) * 100, 100) : 0;
           const quality = d.production > 0 ? (d.good / d.production) * 100 : 0;
           const oee = (availability / 100) * (performance / 100) * (quality / 100) * 100;
