@@ -766,11 +766,12 @@
       materialDefectData: 'material_defect_data',
       wipInventoryData: 'wip_inventory_data',
       repairStatusData: 'repair_status_data',
-      packagingStatusData: 'packaging_status_data'
+      packagingStatusData: 'packaging_status_data',
+      priceData: 'price_data'  // JSONB로 저장
     };
 
     // JSONB로 저장해야 하는 테이블 (동적 컬럼 또는 중첩 객체 포함)
-    const JSONB_TABLES = ['detail_data', 'availability_data'];
+    const JSONB_TABLES = ['detail_data', 'availability_data', 'price_data'];
 
     // 필드명 변환 (camelCase → snake_case) - 중첩 객체는 JSON 문자열로 변환
     function toSnakeCase(obj) {
@@ -807,11 +808,11 @@
       return result;
     }
 
-    // Supabase에서 데이터 로드
+    // Supabase에서 데이터 로드 (최대 10,000건)
     async function loadFromSupabase(tableName) {
       if (!supabaseConnected) return null;
       try {
-        const { data, error } = await supabaseClient.from(tableName).select('*');
+        const { data, error } = await supabaseClient.from(tableName).select('*').limit(10000);
         if (error) throw error;
 
         // JSONB 테이블은 data 컬럼에서 추출
@@ -902,6 +903,7 @@
     const WIP_INVENTORY_KEY = 'mes_wip_inventory_data';      // 재공재고금액
     const REPAIR_STATUS_KEY = 'mes_repair_status_data';      // 불량수리현황
     const PACKAGING_STATUS_KEY = 'mes_packaging_status_data'; // 검포장현황
+    const PRICE_DATA_KEY = 'mes_price_data';                   // 부품단가표
 
     // localStorage에서 데이터 로드
     function loadFromStorage() {
@@ -1033,6 +1035,25 @@
       }
     }
 
+    // 부품단가표 데이터 로드/저장
+    function loadPriceFromStorage() {
+      try {
+        const saved = localStorage.getItem(PRICE_DATA_KEY);
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        console.error('단가표 데이터 로드 실패:', e);
+        return [];
+      }
+    }
+    function savePriceToStorage(data) {
+      try {
+        localStorage.setItem(PRICE_DATA_KEY, JSON.stringify(data));
+        console.log('단가표 데이터 저장 완료:', data.length + '건');
+      } catch (e) {
+        console.error('단가표 데이터 저장 실패:', e);
+      }
+    }
+
     // localStorage에 상세 데이터 저장
     function saveDetailToStorage(data) {
       try {
@@ -1143,6 +1164,7 @@
       wipInventoryData: loadWipInventoryFromStorage(),
       repairStatusData: loadRepairStatusFromStorage(),
       packagingStatusData: loadPackagingStatusFromStorage(),
+      priceData: loadPriceFromStorage(),
       filters: { process: 'all', equipment: 'all', product: 'all' },
       selectedMonth: new Date().getMonth() + 1,  // 현재 월 기본값 (1-12)
       pivot: {
@@ -1157,6 +1179,7 @@
     function setSelectedMonth(month) {
       state.selectedMonth = parseInt(month);
       render();
+      setTimeout(() => { createCharts(); initTableSort(); }, 100);
     }
 
     // 피봇 설정 변경
@@ -1965,6 +1988,29 @@
       return state.rawData.filter(row => {
         // Laser 공정 제외
         if (excludedProcesses.includes(row.process)) return false;
+
+        // 월 필터링 - 생산일자에서 월 추출하여 비교
+        if (row.date) {
+          const dateStr = String(row.date);
+          let rowMonth = null;
+
+          // 다양한 날짜 형식 처리: YYYY-MM-DD, YYYY/MM/DD, MM/DD, M/D 등
+          if (dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            rowMonth = parseInt(parts[1]) || null;
+          } else if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            // MM/DD/YYYY 또는 YYYY/MM/DD 형식 모두 처리
+            if (parts[0].length === 4) {
+              rowMonth = parseInt(parts[1]) || null;
+            } else {
+              rowMonth = parseInt(parts[0]) || null;
+            }
+          }
+
+          if (rowMonth && rowMonth !== state.selectedMonth) return false;
+        }
+
         if (state.filters.process !== 'all' && row.process !== state.filters.process) return false;
         if (state.filters.equipment !== 'all' && row.equipment !== state.filters.equipment) return false;
         if (state.filters.product !== 'all' && row.productType !== state.filters.product) return false;
@@ -1997,8 +2043,29 @@
       const totalDisposal = data.reduce((sum, r) => sum + r.disposalQty, 0);
       const totalStandard = data.reduce((sum, r) => sum + r.standardQty, 0);
 
+      // 금액 계산 (품목코드로 단가 매칭)
+      let totalProductionAmount = 0;
+      let totalDefectAmount = 0;
+      let totalDisposalAmount = 0;
+      let matchedCount = 0;
+      let unmatchedCount = 0;
+
+      data.forEach(r => {
+        const unitPrice = getUnitPriceByCode(r.itemCode);
+        if (unitPrice && unitPrice > 0) {
+          totalProductionAmount += r.productionQty * unitPrice;
+          totalDefectAmount += r.defectQty * unitPrice;
+          totalDisposalAmount += r.disposalQty * unitPrice;
+          matchedCount++;
+        } else {
+          unmatchedCount++;
+        }
+      });
+
       return {
         totalProduction, totalGood, totalDefect, totalDisposal, totalStandard,
+        totalProductionAmount, totalDefectAmount, totalDisposalAmount,
+        priceMatchRate: data.length > 0 ? ((matchedCount / data.length) * 100).toFixed(1) : 0,
         avgYield: totalProduction > 0 ? (totalGood / totalProduction * 100).toFixed(1) : 0,
         avgDefectRate: totalProduction > 0 ? (totalDefect / totalProduction * 100).toFixed(1) : 0,
         avgDisposalRate: totalProduction > 0 ? (totalDisposal / totalProduction * 100).toFixed(1) : 0,
@@ -2844,7 +2911,19 @@
                         ${user.email === ADMIN_EMAIL ? '<span class="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">관리자</span>' : ''}
                       </td>
                       <td>${user.display_name || '-'}</td>
-                      <td><span class="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full">${user.role || 'viewer'}</span></td>
+                      <td>
+                        ${user.email === ADMIN_EMAIL ?
+                          '<span class="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">admin</span>' :
+                          `<select onchange="handleChangeRole('${user.id}', this.value)"
+                            class="px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white cursor-pointer
+                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                            ${user.role === 'admin' ? 'text-amber-700 bg-amber-50' : user.role === 'editor' ? 'text-blue-700 bg-blue-50' : 'text-slate-600 bg-slate-50'}">
+                            <option value="viewer" ${(user.role || 'viewer') === 'viewer' ? 'selected' : ''}>👁️ viewer (조회)</option>
+                            <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>✏️ editor (편집)</option>
+                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>👑 admin (관리)</option>
+                          </select>`
+                        }
+                      </td>
                       <td>${user.last_login ? new Date(user.last_login).toLocaleString('ko-KR') : '-'}</td>
                       <td>${new Date(user.created_at).toLocaleDateString('ko-KR')}</td>
                       <td class="text-center">
@@ -2884,6 +2963,31 @@
         render();
       } else {
         alert('처리 실패: ' + result.error);
+      }
+    }
+
+    // 사용자 역할 변경 핸들러
+    async function handleChangeRole(userId, newRole) {
+      const roleNames = { viewer: '조회자', editor: '편집자', admin: '관리자' };
+      if (!confirm(`이 사용자의 역할을 "${roleNames[newRole]}"(으)로 변경하시겠습니까?\n\n• viewer: 데이터 조회만 가능\n• editor: 데이터 업로드 가능\n• admin: 모든 권한 (사용자 관리 포함)`)) {
+        render(); // 취소시 원래 값으로 복원
+        return;
+      }
+
+      try {
+        const { error } = await supabaseClient
+          .from('user_profiles')
+          .update({ role: newRole })
+          .eq('id', userId);
+
+        if (error) throw error;
+
+        alert(`역할이 "${roleNames[newRole]}"(으)로 변경되었습니다.`);
+        render();
+      } catch (err) {
+        console.error('역할 변경 실패:', err);
+        alert('역할 변경 실패: ' + err.message);
+        render(); // 에러시 원래 값으로 복원
       }
     }
 
@@ -2949,7 +3053,7 @@
           </div>
 
           <!-- 메인 업로드 영역 -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
             <!-- 생산실적 -->
             <div class="group relative bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 overflow-hidden">
               <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-emerald-500"></div>
@@ -3007,6 +3111,26 @@
               </div>
               <div class="mt-4 pt-3 border-t border-slate-100 text-xs font-medium ${state.detailData.length > 0 ? 'text-slate-600' : 'text-slate-400'}">
                 ${state.detailData.length > 0 ? `<span class="inline-flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>${state.detailData.length.toLocaleString()}건</span>` : '데이터 없음'}
+              </div>
+            </div>
+
+            <!-- 부품단가표 -->
+            <div class="group relative bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:border-amber-300 transition-all duration-300 overflow-hidden">
+              <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 to-amber-500"></div>
+              <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">💰</div>
+                <div class="flex-1">
+                  <h3 class="font-bold text-slate-800 mb-1">부품단가표</h3>
+                  <p class="text-xs text-slate-400 mb-4">생산금액 산출용</p>
+                  <label class="flex items-center justify-center gap-2 w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg cursor-pointer transition-all shadow-sm hover:shadow">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    업로드
+                    <input type="file" accept=".csv" onchange="handlePriceUpload(event)" class="hidden">
+                  </label>
+                </div>
+              </div>
+              <div class="mt-4 pt-3 border-t border-slate-100 text-xs font-medium ${state.priceData.length > 0 ? 'text-amber-600' : 'text-slate-400'}">
+                ${state.priceData.length > 0 ? `<span class="inline-flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>${state.priceData.length.toLocaleString()}건</span>` : '데이터 없음'}
               </div>
             </div>
           </div>
@@ -3277,8 +3401,22 @@
         `;
       }
 
+      // 월별 필터링된 가동율 데이터
+      const filteredAvailability = state.availabilityData.filter(d => {
+        if (!d.date) return true; // 날짜 없으면 포함
+        const dateStr = String(d.date);
+        let rowMonth = null;
+        if (dateStr.includes('-')) {
+          rowMonth = parseInt(dateStr.split('-')[1]) || null;
+        } else if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0]);
+        }
+        return !rowMonth || rowMonth === state.selectedMonth;
+      });
+
       // 비가동 데이터 계산
-      const downtimeData = state.availabilityData.map(d => ({
+      const downtimeData = filteredAvailability.map(d => ({
         ...d,
         downtimeMinutes: d.operatingTime - d.runningTime,
         downtimeRate: d.operatingTime > 0 ? ((d.operatingTime - d.runningTime) / d.operatingTime * 100) : 0
@@ -4041,7 +4179,16 @@
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: {
+              legend: { display: false },
+              datalabels: {
+                anchor: 'end',
+                align: 'right',
+                color: '#475569',
+                font: { size: 10, weight: '600' },
+                formatter: (value) => formatCompact(value)
+              }
+            },
             scales: {
               x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: v => formatCompact(v) } },
               y: { grid: { display: false } }
@@ -4069,7 +4216,16 @@
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: {
+              legend: { display: false },
+              datalabels: {
+                anchor: 'end',
+                align: 'right',
+                color: '#475569',
+                font: { size: 10, weight: '600' },
+                formatter: (value) => formatCompact(value)
+              }
+            },
             scales: {
               x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: v => formatCompact(v) } },
               y: { grid: { display: false } }
@@ -4097,7 +4253,16 @@
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: {
+              legend: { display: false },
+              datalabels: {
+                anchor: 'end',
+                align: 'right',
+                color: '#475569',
+                font: { size: 10, weight: '600' },
+                formatter: (value) => formatNumber(value)
+              }
+            },
             scales: {
               x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: v => formatNumber(v) } },
               y: { grid: { display: false } }
@@ -4141,7 +4306,16 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: {
+              legend: { display: false },
+              datalabels: {
+                anchor: 'end',
+                align: 'top',
+                color: '#475569',
+                font: { size: 11, weight: '600' },
+                formatter: (value) => formatNumber(value)
+              }
+            },
             scales: {
               y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: v => formatNumber(v) } },
               x: { grid: { display: false } }
@@ -4442,24 +4616,47 @@
 
     // 생산현황 콘텐츠
     function renderProductionContent(data, stats, processInfo, equipments) {
+      const hasPrice = state.priceData && state.priceData.length > 0;
       return `
-        <!-- Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
+        <!-- Summary Cards - 수량 -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div class="stat-card">
             <div class="stat-label">총 생산수량</div>
             <div class="stat-value" style="color: ${processInfo.color}">${formatNumber(stats.totalProduction)} EA</div>
+          </div>
+          <div class="stat-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%);">
+            <div class="stat-label">💰 총 생산금액</div>
+            <div class="stat-value text-amber-600">${hasPrice ? formatNumber(Math.round(stats.totalProductionAmount)) + ' 원' : '단가표 필요'}</div>
+            ${hasPrice ? `<div class="stat-sub text-amber-500">매칭율 ${stats.priceMatchRate}%</div>` : ''}
           </div>
           <div class="stat-card">
             <div class="stat-label">수율</div>
             <div class="stat-value text-blue-600">${stats.avgYield}%</div>
           </div>
           <div class="stat-card">
+            <div class="stat-label">목표달성률</div>
+            <div class="stat-value text-emerald-600">${stats.achievementRate}%</div>
+          </div>
+        </div>
+        <!-- Summary Cards - 불량/폐기 -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="stat-card">
             <div class="stat-label">불량율</div>
             <div class="stat-value text-red-500">${stats.avgDefectRate}%</div>
+            <div class="stat-sub">${formatNumber(stats.totalDefect)} EA</div>
+          </div>
+          <div class="stat-card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
+            <div class="stat-label">💸 불량금액</div>
+            <div class="stat-value text-red-600">${hasPrice ? formatNumber(Math.round(stats.totalDefectAmount)) + ' 원' : '-'}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">폐기율</div>
-            <div class="stat-value text-red-500">${stats.avgDisposalRate}%</div>
+            <div class="stat-value text-rose-500">${stats.avgDisposalRate}%</div>
+            <div class="stat-sub">${formatNumber(stats.totalDisposal)} EA</div>
+          </div>
+          <div class="stat-card" style="background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);">
+            <div class="stat-label">🗑️ 폐기금액</div>
+            <div class="stat-value text-rose-600">${hasPrice ? formatNumber(Math.round(stats.totalDisposalAmount)) + ' 원' : '-'}</div>
           </div>
         </div>
 
@@ -6592,36 +6789,49 @@
                   data: processLabels.map(p => parseFloat((processSummary[p].totalDowntime / 60).toFixed(1))),
                   backgroundColor: processLabels.map(p => processColors[p] || '#94a3b8'),
                   borderRadius: 6,
-                  barPercentage: 0.6
+                  barPercentage: 0.6,
+                  datalabels: {
+                    anchor: 'end',
+                    align: 'top',
+                    color: '#374151',
+                    font: { size: 12, weight: '600' },
+                    formatter: (value) => formatDecimal(value, 1) + 'h'
+                  }
                 },
                 {
                   label: '비가동율(%)',
                   data: processLabels.map(p => parseFloat((processSummary[p].totalDowntime / processSummary[p].totalOperating * 100).toFixed(1))),
                   type: 'line',
-                  borderColor: '#fca5a5',
-                  backgroundColor: '#fca5a5',
+                  borderColor: '#f87171',
+                  backgroundColor: '#f87171',
                   borderWidth: 3,
-                  pointRadius: 6,
+                  pointRadius: 8,
                   pointBackgroundColor: '#fff',
-                  pointBorderWidth: 2,
+                  pointBorderWidth: 3,
                   fill: false,
-                  yAxisID: 'y1'
+                  yAxisID: 'y1',
+                  datalabels: {
+                    anchor: 'end',
+                    align: 'top',
+                    offset: 8,
+                    color: '#dc2626',
+                    font: { size: 12, weight: 'bold' },
+                    formatter: (value) => formatDecimal(value, 1) + '%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                    borderRadius: 4,
+                    padding: { top: 4, bottom: 4, left: 6, right: 6 }
+                  }
                 }
               ]
             },
             options: {
               responsive: true,
               maintainAspectRatio: false,
-              layout: { padding: { top: 30 } },
+              layout: { padding: { top: 40 } },
               plugins: {
                 legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } },
                 datalabels: {
-                  display: (ctx) => ctx.datasetIndex === 0,
-                  anchor: 'end',
-                  align: 'top',
-                  color: '#374151',
-                  font: { size: 11, weight: '600' },
-                  formatter: (value) => formatDecimal(value, 1) + 'h'
+                  display: true
                 }
               },
               scales: {
@@ -7011,6 +7221,95 @@
         }
       };
       reader.readAsText(file, 'UTF-8');
+    }
+
+    // 부품단가표 업로드 핸들러
+    function handlePriceUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // 편집 권한 확인
+      if (userProfile && !['admin', 'editor'].includes(userProfile.role)) {
+        alert('데이터 업로드 권한이 없습니다. 관리자에게 문의하세요.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const newData = parsePriceCSV(e.target.result);
+        state.priceData = newData;
+        savePriceToStorage(newData);
+        render();
+        setTimeout(() => { createCharts(); initTableSort(); }, 100);
+        alert('부품단가표 ' + newData.length + '건이 저장되었습니다.\n\n생산금액/불량금액이 자동 계산됩니다.');
+        // Supabase 동기화 및 로그 기록
+        if (supabaseConnected) {
+          await saveToSupabase('price_data', newData);
+          await logAccess('data_upload', { type: 'price_data', count: newData.length, filename: file.name });
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+
+    // 부품단가표 CSV 파싱
+    function parsePriceCSV(csvText) {
+      const lines = csvText.trim().split('\n');
+      if (lines.length < 2) return [];
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^\uFEFF/, ''));
+      const data = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length < 12) continue;
+
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = values[idx] || '';
+        });
+
+        // 필드 매핑
+        const item = {
+          itemCode: row['품목코드'] || '',
+          customerPN: row['고객사 P/N'] || '',
+          itemName: row['품목명'] || '',
+          itemStatus: row['품목상태'] || '',
+          itemType: row['품목유형'] || '',
+          supplyType: row['조달구분'] || '',
+          materialCost: parseFloat(row['재료비'] || row[' 재료비 '] || '0') || 0,
+          processingCost: parseFloat(row['가공비'] || row[' 가공비 '] || '0') || 0,
+          unitPrice: parseFloat(row['단가'] || row[' 단가 '] || '0') || 0,
+          remark: row['비고'] || ''
+        };
+
+        if (item.itemCode || item.itemName) {
+          data.push(item);
+        }
+      }
+
+      console.log('단가표 파싱 완료:', data.length + '건');
+      return data;
+    }
+
+    // 품목명으로 단가 조회
+    function getUnitPrice(productName) {
+      if (!state.priceData || state.priceData.length === 0) return null;
+
+      // 품목명으로 매칭 (부분 매칭)
+      const match = state.priceData.find(p =>
+        productName && p.itemName &&
+        (productName.includes(p.itemName) || p.itemName.includes(productName) ||
+         productName.replace(/[-_\s]/g, '').toLowerCase().includes(p.itemName.replace(/[-_\s]/g, '').toLowerCase()))
+      );
+
+      return match ? match.unitPrice : null;
+    }
+
+    // 품목코드로 단가 조회
+    function getUnitPriceByCode(itemCode) {
+      if (!state.priceData || state.priceData.length === 0) return null;
+      const match = state.priceData.find(p => p.itemCode === itemCode || p.customerPN === itemCode);
+      return match ? match.unitPrice : null;
     }
 
     function setTab(tab) {
