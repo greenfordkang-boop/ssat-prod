@@ -2018,6 +2018,17 @@
       });
     }
 
+    // 년간 데이터 (월 필터 제외, 공정/설비/품목 필터만 적용)
+    function getYearlyData() {
+      return state.rawData.filter(row => {
+        if (excludedProcesses.includes(row.process)) return false;
+        if (state.filters.process !== 'all' && row.process !== state.filters.process) return false;
+        if (state.filters.equipment !== 'all' && row.equipment !== state.filters.equipment) return false;
+        if (state.filters.product !== 'all' && row.productType !== state.filters.product) return false;
+        return true;
+      });
+    }
+
     // 고유값 추출 (Laser 제외)
     function getUniqueValues(key) {
       let values = [...new Set(state.rawData.map(r => r[key]).filter(Boolean))];
@@ -2708,8 +2719,10 @@
 
     // 메인 대시보드
     function renderDashboard() {
-      const filteredData = getFilteredData();
+      const filteredData = getFilteredData();  // 월별 필터링된 데이터
+      const yearlyData = getYearlyData();      // 년간 데이터 (월 필터 제외)
       const stats = getSummaryStats(filteredData);
+      const yearlyStats = getSummaryStats(yearlyData);  // 년간 통계
       const equipments = getUniqueValues('equipment');
       const currentSubMenus = getCurrentSubMenus();
 
@@ -2817,7 +2830,7 @@
             ${state.activeTab === 'wip-inventory' ? renderWipInventoryPage() : ''}
             ${state.activeTab === 'admin' ? '<div id="admin-panel-container"><div class="text-center py-8"><div class="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto"></div><p class="mt-4 text-slate-500">사용자 목록 로딩 중...</p></div></div>' : ''}
             ${state.activeTab !== 'upload' && state.activeTab !== 'downtime' && state.activeTab !== 'wip-inventory' && state.activeTab !== 'admin' ? (state.rawData.length === 0 ? renderUploadPrompt() : `
-              ${state.activeTab === 'overview' ? renderOverview(stats, filteredData) : ''}
+              ${state.activeTab === 'overview' ? renderOverview(stats, filteredData, yearlyData, yearlyStats) : ''}
               ${state.activeTab === 'process' ? renderProcess(filteredData) : ''}
               ${state.activeTab === 'quality' ? renderQuality(stats, filteredData) : ''}
               ${state.activeTab === 'data' ? renderDataTable(filteredData) : ''}
@@ -4422,12 +4435,26 @@
     }
 
     // 종합현황 - Apple 스타일
-    function renderOverview(stats, data) {
-      if (!stats) return '<p class="text-center text-slate-500 py-8">데이터가 없습니다.</p>';
-      const oeeData = getOEEData(data);
-      const totalOEE = oeeData.length > 0
-        ? (oeeData.reduce((sum, d) => sum + parseFloat(d.oee), 0) / oeeData.length).toFixed(1)
+    function renderOverview(stats, data, yearlyData, yearlyStats) {
+      // 년간 데이터가 없으면 메시지 표시
+      if (!yearlyStats && !stats) return '<p class="text-center text-slate-500 py-8">데이터가 없습니다.</p>';
+
+      // 월별 통계 (선택된 월) - 없을 수 있음
+      const monthlyOeeData = stats ? getOEEData(data) : [];
+      const monthlyTotalOEE = monthlyOeeData.length > 0
+        ? (monthlyOeeData.reduce((sum, d) => sum + parseFloat(d.oee), 0) / monthlyOeeData.length).toFixed(1)
+        : '-';
+
+      // 년간 통계 (항상 표시)
+      const yearlyOeeData = yearlyStats ? getOEEData(yearlyData) : [];
+      const yearlyTotalOEE = yearlyOeeData.length > 0
+        ? (yearlyOeeData.reduce((sum, d) => sum + parseFloat(d.oee), 0) / yearlyOeeData.length).toFixed(1)
         : 0;
+
+      // 표시용 데이터 (월별 데이터가 있으면 월별, 없으면 년간 사용)
+      const displayStats = stats || yearlyStats;
+      const displayOeeData = monthlyOeeData.length > 0 ? monthlyOeeData : yearlyOeeData;
+      const displayTotalOEE = stats ? monthlyTotalOEE : yearlyTotalOEE;
 
       return `
         <!-- Section Header -->
@@ -4450,22 +4477,22 @@
 
         <!-- Total OEE Card -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
-          <div class="stat-card ${parseFloat(totalOEE) >= 85 ? 'green' : parseFloat(totalOEE) >= 60 ? '' : 'red'}">
-            <div class="stat-label">전체 종합효율 (OEE)</div>
-            <div class="stat-value ${parseFloat(totalOEE) >= 85 ? 'text-emerald-600' : parseFloat(totalOEE) >= 60 ? 'text-slate-600' : 'text-red-400'}">${totalOEE}%</div>
-            <div class="stat-sub">시간가동율 × 성능가동율 × 양품율</div>
+          <div class="stat-card ${parseFloat(displayTotalOEE) >= 85 ? 'green' : parseFloat(displayTotalOEE) >= 60 ? '' : 'red'}">
+            <div class="stat-label">${state.selectedMonth}월 종합효율 (OEE)</div>
+            <div class="stat-value ${parseFloat(displayTotalOEE) >= 85 ? 'text-emerald-600' : parseFloat(displayTotalOEE) >= 60 ? 'text-slate-600' : 'text-red-400'}">${displayTotalOEE === '-' ? '-' : displayTotalOEE + '%'}</div>
+            <div class="stat-sub">${stats ? '시간가동율 × 성능가동율 × 양품율' : '해당 월 데이터 없음'}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">평균 시간가동율</div>
-            <div class="stat-value text-slate-600">${oeeData.length > 0 ? formatPercent(oeeData.reduce((sum, d) => sum + parseFloat(d.availability), 0) / oeeData.length) : '0.0%'}</div>
+            <div class="stat-value text-slate-600">${displayOeeData.length > 0 ? formatPercent(displayOeeData.reduce((sum, d) => sum + parseFloat(d.availability), 0) / displayOeeData.length) : '-'}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">평균 성능가동율</div>
-            <div class="stat-value text-slate-600">${oeeData.length > 0 ? formatPercent(oeeData.reduce((sum, d) => sum + parseFloat(d.performance), 0) / oeeData.length) : '0.0%'}</div>
+            <div class="stat-value text-slate-600">${displayOeeData.length > 0 ? formatPercent(displayOeeData.reduce((sum, d) => sum + parseFloat(d.performance), 0) / displayOeeData.length) : '-'}</div>
           </div>
           <div class="stat-card blue">
             <div class="stat-label">평균 양품율</div>
-            <div class="stat-value text-blue-600">${stats.avgYield}%</div>
+            <div class="stat-value text-blue-600">${displayStats ? displayStats.avgYield + '%' : '-'}</div>
           </div>
         </div>
 
@@ -4504,7 +4531,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${oeeData.map(d => `
+                ${displayOeeData.map(d => `
                   <tr>
                     <td class="font-medium">${d.process}</td>
                     <td class="text-right">${formatNumber(d.production)}</td>
@@ -6215,7 +6242,8 @@
       console.log('=== createCharts started ===');
       try {
       destroyCharts();
-      const filteredData = getFilteredData();
+      const filteredData = getFilteredData();  // 월별 데이터
+      const yearlyData = getYearlyData();      // 년간 데이터 (월 필터 제외)
 
       // Chart.js 글로벌 설정 - Apple 스타일
       Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif';
@@ -6246,10 +6274,12 @@
         padding: 4
       };
 
-      // OEE 차트 (막대: 3대 지표, 꺾은선: OEE 보조축)
+      // OEE 차트 (막대: 3대 지표, 꺾은선: OEE 보조축) - 월별 데이터 없으면 년간 데이터 사용
       const oeeCanvas = document.getElementById('oeeChart');
       if (oeeCanvas) {
-        const oeeData = getOEEData(filteredData);
+        const monthlyOeeForChart = getOEEData(filteredData);
+        const yearlyOeeForChart = getOEEData(yearlyData);
+        const oeeData = monthlyOeeForChart.length > 0 ? monthlyOeeForChart : yearlyOeeForChart;
         charts.oee = new Chart(oeeCanvas, {
           type: 'bar',
           data: {
@@ -6286,10 +6316,10 @@
         });
       }
 
-      // 월별 OEE 차트 (막대: 3대 지표, 꺾은선: OEE 보조축)
+      // 월별 OEE 차트 (막대: 3대 지표, 꺾은선: OEE 보조축) - 년간 데이터 사용
       const monthlyOeeCanvas = document.getElementById('monthlyOeeChart');
       if (monthlyOeeCanvas) {
-        const monthlyData = getMonthlyOEEData(filteredData);
+        const monthlyData = getMonthlyOEEData(yearlyData);  // 년간 데이터로 월별 추이 표시
         charts.monthlyOee = new Chart(monthlyOeeCanvas, {
           type: 'bar',
           data: {
