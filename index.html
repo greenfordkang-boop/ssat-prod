@@ -826,7 +826,7 @@
       }
     }
 
-    // Supabase에 데이터 저장 (전체 교체)
+    // Supabase에 데이터 저장 (전체 교체, 배치 처리)
     async function saveToSupabase(tableName, data) {
       if (!supabaseConnected || !data || data.length === 0) return false;
       try {
@@ -841,8 +841,18 @@
           insertData = data.map(toSnakeCase);
         }
 
-        const { error } = await supabaseClient.from(tableName).insert(insertData);
-        if (error) throw error;
+        // 배치 처리 (Supabase는 한 번에 1000건 제한)
+        const BATCH_SIZE = 500;
+        const totalBatches = Math.ceil(insertData.length / BATCH_SIZE);
+
+        for (let i = 0; i < insertData.length; i += BATCH_SIZE) {
+          const batch = insertData.slice(i, i + BATCH_SIZE);
+          const { error } = await supabaseClient.from(tableName).insert(batch);
+          if (error) throw error;
+          const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+          console.log(`📦 Supabase 배치 ${batchNum}/${totalBatches} 저장 완료 (${batch.length}건)`);
+        }
+
         console.log(`✅ Supabase 저장 완료 (${tableName}): ${data.length}건`);
         return true;
       } catch (e) {
