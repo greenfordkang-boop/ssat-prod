@@ -4502,11 +4502,11 @@
           <div style="height: 280px;"><canvas id="monthlyOeeChart"></canvas></div>
         </div>
 
-        <!-- OEE by Process Table -->
+        <!-- OEE by Process Table (년간 누적) -->
         <div class="card mb-6">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-3">
-              <h3 class="text-base font-bold text-slate-800">공정별 종합효율 상세</h3>
+              <h3 class="text-base font-bold text-slate-800">공정별 종합효율 상세 <span class="text-sm font-normal text-slate-500">(년간 누적)</span></h3>
               <button id="toggle-oee" class="collapse-toggle" onclick="toggleCollapse('oee')">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 접기
@@ -4553,7 +4553,7 @@
 
         <!-- OEE Chart -->
         <div class="chart-card">
-          <div class="chart-title">공정별 종합효율 (OEE) 비교</div>
+          <div class="chart-title">공정별 종합효율 (OEE) 비교 <span class="text-sm font-normal text-slate-400">(년간 누적)</span></div>
           <div style="height: 280px;"><canvas id="oeeChart"></canvas></div>
         </div>
       `;
