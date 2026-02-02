@@ -1898,11 +1898,30 @@
     }
 
     // 공정별 시간가동율 계산 (가동율 데이터 기반 - CSV의 시간가동율(%) 값 사용)
-    function getProcessAvailability() {
+    // targetMonth 파라미터: 특정 월(1-12)만 필터링하여 계산, null이면 전체 데이터 사용
+    function getProcessAvailability(targetMonth = null) {
       if (state.availabilityData.length === 0) return {};
 
+      // 월별 필터링 적용
+      const filteredData = targetMonth !== null
+        ? state.availabilityData.filter(row => {
+            if (!row.date) return false;
+            const dateStr = String(row.date);
+            let rowMonth = null;
+            if (dateStr.includes('-')) {
+              rowMonth = parseInt(dateStr.split('-')[1]) || null;
+            } else if (dateStr.includes('/')) {
+              const parts = dateStr.split('/');
+              rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0]);
+            }
+            return rowMonth === targetMonth;
+          })
+        : state.availabilityData;
+
+      if (filteredData.length === 0) return {};
+
       const grouped = {};
-      state.availabilityData.forEach(row => {
+      filteredData.forEach(row => {
         if (!grouped[row.process]) {
           grouped[row.process] = {
             totalOperatingTime: 0,
@@ -1930,8 +1949,13 @@
     }
 
     // 월별 OEE 데이터 계산 (1월~12월 전체)
+    // 각 월별로 해당 월의 가동율 데이터를 개별적으로 사용
     function getMonthlyOEEData(data) {
-      const processAvailability = getProcessAvailability();
+      // 전체 평균 가동율 (월별 가동율 데이터가 없을 때 폴백용)
+      const overallAvailability = getProcessAvailability();
+      const defaultAvailability = Object.keys(overallAvailability).length > 0
+        ? Object.values(overallAvailability).reduce((a, b) => a + b, 0) / Object.keys(overallAvailability).length
+        : 80; // 기본값
 
       // 데이터에서 연도 추출 (없으면 현재 연도)
       let year = new Date().getFullYear();
@@ -1943,7 +1967,7 @@
       const allMonths = {};
       for (let m = 1; m <= 12; m++) {
         const monthStr = `${year}-${String(m).padStart(2, '0')}`;
-        allMonths[monthStr] = { month: monthStr, label: `${m}월`, production: 0, good: 0, standard: 0, hasData: false };
+        allMonths[monthStr] = { month: monthStr, label: `${m}월`, monthNum: m, production: 0, good: 0, standard: 0, hasData: false };
       }
 
       // 데이터가 있는 월 채우기
@@ -1958,18 +1982,25 @@
         }
       });
 
-      // 전체 평균 시간가동율 계산
-      const avgAvailability = Object.keys(processAvailability).length > 0
-        ? Object.values(processAvailability).reduce((a, b) => a + b, 0) / Object.keys(processAvailability).length
-        : 80; // 기본값
-
       return Object.values(allMonths)
         .sort((a, b) => a.month.localeCompare(b.month))
         .map(d => {
           if (!d.hasData) {
             return { ...d, availability: null, performance: null, quality: null, oee: null };
           }
-          const availability = Math.min(avgAvailability, 100);
+
+          // 해당 월의 가동율 데이터 가져오기
+          const monthlyProcessAvailability = getProcessAvailability(d.monthNum);
+
+          // 해당 월에 가동율 데이터가 있으면 사용, 없으면 전체 평균 사용
+          let availability;
+          if (Object.keys(monthlyProcessAvailability).length > 0) {
+            availability = Object.values(monthlyProcessAvailability).reduce((a, b) => a + b, 0) / Object.keys(monthlyProcessAvailability).length;
+          } else {
+            availability = defaultAvailability;
+          }
+          availability = Math.min(availability, 100);
+
           const performance = d.standard > 0 ? Math.min((d.production / d.standard) * 100, 100) : 0;
           const quality = d.production > 0 ? (d.good / d.production) * 100 : 0;
           const oee = (availability / 100) * (performance / 100) * (quality / 100) * 100;
@@ -4376,9 +4407,10 @@
 
     // 공정별 OEE(종합효율) 계산
     // OEE = 시간가동율 × 성능가동율 × 양품율 (각각 0~1 사이 값으로 계산)
-    function getOEEData(data) {
-      // 가동율 데이터에서 공정별 시간가동율 가져오기
-      const processAvailability = getProcessAvailability();
+    // targetMonth 파라미터: 특정 월의 가동율만 사용 (null이면 전체 데이터)
+    function getOEEData(data, targetMonth = null) {
+      // 가동율 데이터에서 공정별 시간가동율 가져오기 (월별 필터링 적용)
+      const processAvailability = getProcessAvailability(targetMonth);
 
       const grouped = {};
       data.forEach(row => {
@@ -4439,14 +4471,14 @@
       // 년간 데이터가 없으면 메시지 표시
       if (!yearlyStats && !stats) return '<p class="text-center text-slate-500 py-8">데이터가 없습니다.</p>';
 
-      // 월별 통계 (선택된 월) - 없을 수 있음
-      const monthlyOeeData = stats ? getOEEData(data) : [];
+      // 월별 통계 (선택된 월) - 해당 월의 가동율 데이터 사용
+      const monthlyOeeData = stats ? getOEEData(data, state.selectedMonth) : [];
       const monthlyTotalOEE = monthlyOeeData.length > 0
         ? (monthlyOeeData.reduce((sum, d) => sum + parseFloat(d.oee), 0) / monthlyOeeData.length).toFixed(1)
         : '-';
 
-      // 년간 통계 (항상 표시)
-      const yearlyOeeData = yearlyStats ? getOEEData(yearlyData) : [];
+      // 년간 통계 (항상 표시) - 전체 가동율 데이터 사용
+      const yearlyOeeData = yearlyStats ? getOEEData(yearlyData, null) : [];
       const yearlyTotalOEE = yearlyOeeData.length > 0
         ? (yearlyOeeData.reduce((sum, d) => sum + parseFloat(d.oee), 0) / yearlyOeeData.length).toFixed(1)
         : 0;
