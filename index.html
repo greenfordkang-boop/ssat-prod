@@ -7277,6 +7277,26 @@
       }
     }
 
+    // 데이터에서 월 목록 추출 (중복 제거)
+    function getMonthsFromData(data) {
+      const months = new Set();
+      data.forEach(row => {
+        if (!row.date) return;
+        const { month } = extractYearMonth(row.date);
+        if (month) months.add(month);
+      });
+      return months;
+    }
+
+    // 기존 데이터에서 특정 월 데이터 제거
+    function removeMonthsFromData(existingData, monthsToRemove) {
+      return existingData.filter(row => {
+        if (!row.date) return true; // 날짜 없는 데이터는 유지
+        const { month } = extractYearMonth(row.date);
+        return !monthsToRemove.has(month);
+      });
+    }
+
     function handleFileUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -7290,14 +7310,22 @@
       const reader = new FileReader();
       reader.onload = async (e) => {
         const newData = parseCSV(e.target.result);
-        state.rawData = newData;
-        saveToStorage(newData);
+
+        // 새 데이터에서 월 추출
+        const newMonths = getMonthsFromData(newData);
+        const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
+
+        // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
+        const filteredExisting = removeMonthsFromData(state.rawData, newMonths);
+        state.rawData = [...filteredExisting, ...newData];
+
+        saveToStorage(state.rawData);
         render();
         setTimeout(() => { createCharts(); initTableSort(); }, 100);
-        alert('데이터 ' + newData.length + '건이 저장되었습니다.');
+        alert(`${monthNames} 데이터 ${newData.length}건이 저장되었습니다.\n(총 ${state.rawData.length}건)`);
         // Supabase 동기화 및 로그 기록
         if (supabaseConnected) {
-          await saveToSupabase('production_data', newData);
+          await saveToSupabase('production_data', state.rawData);
           await logAccess('data_upload', { type: 'production_data', count: newData.length, filename: file.name });
         }
       };
@@ -7317,14 +7345,22 @@
       const reader = new FileReader();
       reader.onload = async (e) => {
         const newData = parseAvailabilityCSV(e.target.result);
-        state.availabilityData = newData;
-        saveAvailabilityToStorage(newData);
+
+        // 새 데이터에서 월 추출
+        const newMonths = getMonthsFromData(newData);
+        const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
+
+        // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
+        const filteredExisting = removeMonthsFromData(state.availabilityData, newMonths);
+        state.availabilityData = [...filteredExisting, ...newData];
+
+        saveAvailabilityToStorage(state.availabilityData);
         render();
         setTimeout(() => { createCharts(); initTableSort(); }, 100);
-        alert('가동율 데이터 ' + newData.length + '건이 저장되었습니다.');
+        alert(`가동율 ${monthNames} 데이터 ${newData.length}건이 저장되었습니다.\n(총 ${state.availabilityData.length}건)`);
         // Supabase 동기화 및 로그 기록
         if (supabaseConnected) {
-          await saveToSupabase('availability_data', newData);
+          await saveToSupabase('availability_data', state.availabilityData);
           await logAccess('data_upload', { type: 'availability_data', count: newData.length, filename: file.name });
         }
       };
