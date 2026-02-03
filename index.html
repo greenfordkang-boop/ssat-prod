@@ -1660,7 +1660,7 @@
     // 공정별 CT 데이터 개수 조회
     function getCTCountByProcess(processName) {
       if (!state.ctData || state.ctData.length === 0) return 0;
-      return state.ctData.filter(d => d.process === processName).length;
+      return filterCTByProcess(state.ctData, processName).length;
     }
 
     // 공정별 CT CSV 업로드 핸들러
@@ -2528,7 +2528,8 @@
 
     // CT 저조 실적 상세 리스트 빌더
     function buildCtLowPerfList(ctData, processName) {
-      const filteredCT = ctData.filter(d => d.process === processName && d.efficiency > 0);
+      const processCT = filterCTByProcess(ctData, processName);
+      const filteredCT = processCT.filter(d => d.efficiency > 0);
       const sortedCT = [...filteredCT].sort((a, b) => a.efficiency - b.efficiency);
       const worstItems = sortedCT.slice(0, 20);
 
@@ -5112,6 +5113,17 @@
     }
 
     // Cycle Time 콘텐츠
+    // CT 데이터 공정 필터링 헬퍼 (유연한 매칭)
+    function filterCTByProcess(ctData, processName) {
+      if (!ctData || ctData.length === 0 || !processName) return [];
+      const pName = processName.toLowerCase();
+      return ctData.filter(d => {
+        const ctProcess = (d.process || '').toLowerCase();
+        // 정확히 일치하거나, 공정명을 포함하는 경우 매칭
+        return ctProcess === pName || ctProcess.includes(pName) || pName.includes(ctProcess);
+      });
+    }
+
     function renderCycleTimeContent(data, stats, processInfo, equipments) {
       // CT 데이터에서 현재 공정 필터링 (영어 ID -> 한글 공정명 매핑)
       const currentProcessId = state.activeProcess;
@@ -5120,7 +5132,7 @@
       let filteredCTCount = 0;
 
       if (state.ctData && state.ctData.length > 0) {
-        const filteredCT = state.ctData.filter(d => d.process === currentProcessName);
+        const filteredCT = filterCTByProcess(state.ctData, currentProcessName);
 
         filteredCTCount = filteredCT.length;
 
@@ -6912,8 +6924,8 @@
           const currentProcessName = processDataMapping[currentProcessId] || currentProcessId;
 
           if (state.ctData && state.ctData.length > 0) {
-            // 현재 공정에 맞는 CT 데이터 필터링 (한글 공정명으로 매칭)
-            const filteredCT = state.ctData.filter(d => d.process === currentProcessName);
+            // 현재 공정에 맞는 CT 데이터 필터링 (유연한 매칭)
+            const filteredCT = filterCTByProcess(state.ctData, currentProcessName);
 
             // 설비별로 그룹핑하여 평균 계산 (전체 설비명 유지)
             const equipmentMap = {};
