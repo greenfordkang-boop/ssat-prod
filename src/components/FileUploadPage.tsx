@@ -1,8 +1,18 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { parseCSV } from '@/lib/utils'
+import * as XLSX from 'xlsx'
+
+// 엑셀 파일 파싱 함수
+const parseExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
+  const workbook = XLSX.read(buffer, { type: 'array' })
+  const firstSheetName = workbook.SheetNames[0]
+  const worksheet = workbook.Sheets[firstSheetName]
+  const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+  return jsonData as Record<string, unknown>[]
+}
 
 // 아이콘 컴포넌트
 const UploadIcon = () => (
@@ -39,22 +49,44 @@ interface UploadCardConfig {
 
 export default function FileUploadPage() {
   const { data, selectedMonth, setSelectedMonth, uploadData, clearData, syncing } = useData()
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
 
   // 파일 업로드 핸들러
   const handleFileUpload = useCallback(async (
     e: React.ChangeEvent<HTMLInputElement>,
     dataKey: UploadCardConfig['dataKey'],
-    process?: string
+    process?: string,
+    cardId?: string
   ) => {
     const file = e.target.files?.[0]
     if (!file) return
 
+    setUploadingId(cardId || dataKey)
+
     try {
-      const text = await file.text()
-      const parsedData = parseCSV(text)
+      // 파일 확장자 확인
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      let parsedData: Record<string, unknown>[]
+
+      if (ext === 'xlsx' || ext === 'xls') {
+        // 엑셀 파일 파싱
+        const buffer = await file.arrayBuffer()
+        parsedData = parseExcel(buffer)
+      } else if (ext === 'csv') {
+        // CSV 파일 파싱
+        const text = await file.text()
+        parsedData = parseCSV(text)
+      } else {
+        alert('지원하지 않는 파일 형식입니다. (csv, xlsx, xls만 가능)')
+        setUploadingId(null)
+        e.target.value = ''
+        return
+      }
 
       if (parsedData.length === 0) {
-        alert('CSV 파일에 데이터가 없습니다.')
+        alert('파일에 데이터가 없습니다.')
+        setUploadingId(null)
+        e.target.value = ''
         return
       }
 
@@ -91,10 +123,11 @@ export default function FileUploadPage() {
     } catch (error) {
       console.error('파일 업로드 오류:', error)
       alert('파일 처리 중 오류가 발생했습니다.')
+    } finally {
+      // 입력 초기화 및 상태 리셋
+      setUploadingId(null)
+      e.target.value = ''
     }
-
-    // 입력 초기화
-    e.target.value = ''
   }, [uploadData, data.ctData])
 
   // CT 데이터 건수 (공정별)
@@ -277,6 +310,9 @@ export default function FileUploadPage() {
 
   // 업로드 카드 렌더링
   const renderUploadCard = (card: UploadCardConfig, count: number) => {
+    const isUploading = uploadingId === card.id || syncing
+    const isDisabled = isUploading
+
     return (
       <div
         key={card.id}
@@ -294,15 +330,31 @@ export default function FileUploadPage() {
           <div className="flex-1">
             <h3 className="font-bold text-slate-800 mb-1">{card.name}</h3>
             <p className="text-xs text-slate-400 mb-4">{card.description}</p>
-            <label className={`flex items-center justify-center gap-2 w-full py-2.5 ${card.bgColor} text-white text-sm font-semibold rounded-lg cursor-pointer transition-all shadow-sm hover:shadow`}>
-              <UploadIcon />
-              업로드
+            <label className={`flex items-center justify-center gap-2 w-full py-2.5 text-white text-sm font-semibold rounded-lg transition-all shadow-sm ${
+              isDisabled
+                ? 'bg-gray-300 cursor-not-allowed'
+                : `${card.bgColor} cursor-pointer hover:shadow`
+            }`}>
+              {isUploading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  업로드 중...
+                </>
+              ) : (
+                <>
+                  <UploadIcon />
+                  업로드
+                </>
+              )}
               <input
                 type="file"
-                accept=".csv"
-                onChange={(e) => handleFileUpload(e, card.dataKey, card.process)}
+                accept=".csv,.xlsx,.xls"
+                onChange={(e) => handleFileUpload(e, card.dataKey, card.process, card.id)}
                 className="hidden"
-                disabled={syncing}
+                disabled={isDisabled}
               />
             </label>
           </div>

@@ -4,6 +4,16 @@ import { useRef, useState } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { TABLE_MAPPING } from '@/lib/supabase'
 import { parseCSV, getMonthFromDate } from '@/lib/utils'
+import * as XLSX from 'xlsx'
+
+// 엑셀 파일 파싱 함수
+const parseExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
+  const workbook = XLSX.read(buffer, { type: 'array' })
+  const firstSheetName = workbook.SheetNames[0]
+  const worksheet = workbook.Sheets[firstSheetName]
+  const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+  return jsonData as Record<string, unknown>[]
+}
 
 interface FileUploaderProps {
   dataType: keyof typeof TABLE_MAPPING
@@ -11,7 +21,7 @@ interface FileUploaderProps {
   accept?: string
 }
 
-export default function FileUploader({ dataType, label, accept = '.csv' }: FileUploaderProps) {
+export default function FileUploader({ dataType, label, accept = '.csv,.xlsx,.xls' }: FileUploaderProps) {
   const { uploadData, syncing } = useData()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -25,8 +35,22 @@ export default function FileUploader({ dataType, label, accept = '.csv' }: FileU
     setStatus({ type: '', message: '' })
 
     try {
-      const text = await file.text()
-      const parsedData = parseCSV(text)
+      // 파일 확장자 확인
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      let parsedData: Record<string, unknown>[]
+
+      if (ext === 'xlsx' || ext === 'xls') {
+        // 엑셀 파일 파싱
+        const buffer = await file.arrayBuffer()
+        parsedData = parseExcel(buffer)
+      } else if (ext === 'csv') {
+        // CSV 파일 파싱
+        const text = await file.text()
+        parsedData = parseCSV(text)
+      } else {
+        setStatus({ type: 'error', message: '지원하지 않는 파일 형식입니다.' })
+        return
+      }
 
       if (parsedData.length === 0) {
         setStatus({ type: 'error', message: '데이터가 없습니다.' })
@@ -38,7 +62,8 @@ export default function FileUploader({ dataType, label, accept = '.csv' }: FileU
       if (dataType === 'rawData') {
         const monthSet = new Set<number>()
         parsedData.forEach(row => {
-          const month = getMonthFromDate(row['생산일자'])
+          const dateValue = row['생산일자']
+          const month = getMonthFromDate(typeof dateValue === 'string' ? dateValue : String(dateValue || ''))
           if (month > 0) monthSet.add(month)
         })
         months = Array.from(monthSet)
