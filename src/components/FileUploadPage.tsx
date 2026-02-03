@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useCallback } from 'react'
+import { useCallback } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { parseCSV } from '@/lib/utils'
 
@@ -277,19 +277,18 @@ export default function FileUploadPage() {
 
   // 업로드 카드 렌더링
   const renderUploadCard = (card: UploadCardConfig, count: number) => {
-    const inputRef = useRef<HTMLInputElement>(null)
-    const gradientClass = `from-${card.color}-400 to-${card.color}-500`
-
     return (
       <div
         key={card.id}
         className={`group relative bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg ${card.borderColor} transition-all duration-300 overflow-hidden`}
       >
         {/* Top gradient bar */}
-        <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${gradientClass}`} />
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-blue-500" style={{
+          background: `linear-gradient(to right, var(--tw-gradient-from), var(--tw-gradient-to))`
+        }} />
 
         <div className="flex items-start gap-4">
-          <div className={`w-12 h-12 rounded-xl bg-${card.color}-50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform`}>
+          <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
             {card.icon}
           </div>
           <div className="flex-1">
@@ -299,7 +298,6 @@ export default function FileUploadPage() {
               <UploadIcon />
               업로드
               <input
-                ref={inputRef}
                 type="file"
                 accept=".csv"
                 onChange={(e) => handleFileUpload(e, card.dataKey, card.process)}
