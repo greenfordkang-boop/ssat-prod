@@ -274,6 +274,33 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     return Array.from(set).sort()
   }, [data.wipInventoryData])
 
+  // 품목별 창고 분산 현황 (여러 창고에 흩어진 품목 확인용)
+  const itemWarehouseMap = useMemo(() => {
+    const map: Record<string, Set<string>> = {}
+
+    data.wipInventoryData.forEach(row => {
+      const itemCode = String(getFieldValue(row, '품목코드', 'itemCode', 'code') || '')
+      const warehouse = String(getFieldValue(row, '창고명', '창고', 'warehouse') || '')
+
+      if (itemCode && warehouse && warehouse !== '합계') {
+        if (!map[itemCode]) {
+          map[itemCode] = new Set()
+        }
+        map[itemCode].add(warehouse)
+      }
+    })
+
+    return map
+  }, [data.wipInventoryData])
+
+  // 품목이 여러 창고에 있는지 확인
+  const getWarehouseCount = (itemCode: string): number => {
+    return itemWarehouseMap[itemCode]?.size || 0
+  }
+
+  // 분산 필터 상태
+  const [showOnlyDistributed, setShowOnlyDistributed] = useState(false)
+
   // 필터링된 재고 데이터
   const filteredInventory = useMemo(() => {
     let result = [...data.wipInventoryData]
@@ -295,6 +322,14 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
       )
     }
 
+    // 분산 품목만 필터
+    if (showOnlyDistributed) {
+      result = result.filter(row => {
+        const itemCode = String(getFieldValue(row, '품목코드', 'itemCode', 'code') || '')
+        return getWarehouseCount(itemCode) > 1
+      })
+    }
+
     // 정렬
     if (sortConfig) {
       result.sort((a, b) => {
@@ -308,7 +343,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     }
 
     return result // 전체 데이터 반환 (제한 없음)
-  }, [data.wipInventoryData, warehouseFilter, filter, sortConfig])
+  }, [data.wipInventoryData, warehouseFilter, filter, sortConfig, showOnlyDistributed, getWarehouseCount])
 
   // 단가표 필터링
   const filteredPrice = useMemo(() => {
@@ -569,6 +604,17 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                 <span className="text-sm font-normal text-slate-400">({filteredInventory.length}건)</span>
               </h3>
               <div className="flex items-center gap-3">
+                {/* 분산 품목 필터 토글 */}
+                <button
+                  onClick={() => setShowOnlyDistributed(!showOnlyDistributed)}
+                  className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                    showOnlyDistributed
+                      ? 'bg-red-500 text-white border-red-500'
+                      : 'bg-white text-red-600 border-red-300 hover:bg-red-50'
+                  }`}
+                >
+                  🔴 분산품목만
+                </button>
                 <input
                   type="text"
                   placeholder="검색..."
@@ -603,6 +649,10 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0">
                     <tr className="bg-slate-50">
+                      {/* 재고확인 컬럼 (맨 앞) */}
+                      <th className="px-3 py-3 text-center font-semibold text-slate-600 whitespace-nowrap bg-red-50">
+                        재고확인
+                      </th>
                       {columns.map(key => (
                         <th
                           key={key}
@@ -620,21 +670,37 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredInventory.map((row, idx) => (
-                      <tr
-                        key={idx}
-                        className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50 transition-colors`}
-                        onClick={() => handleItemClick(row)}
-                      >
-                        {columns.map((key, colIdx) => (
-                          <td key={colIdx} className="px-4 py-3 whitespace-nowrap">
-                            {typeof row[key as keyof typeof row] === 'number'
-                              ? formatNumber(row[key as keyof typeof row] as number)
-                              : String(row[key as keyof typeof row] || '')}
+                    {filteredInventory.map((row, idx) => {
+                      const itemCode = String(getFieldValue(row, '품목코드', 'itemCode', 'code') || '')
+                      const warehouseCount = getWarehouseCount(itemCode)
+                      const isDistributed = warehouseCount > 1
+
+                      return (
+                        <tr
+                          key={idx}
+                          className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50 transition-colors ${isDistributed ? 'text-red-600' : ''}`}
+                          onClick={() => handleItemClick(row)}
+                        >
+                          {/* 재고확인 컬럼 */}
+                          <td className="px-3 py-3 text-center whitespace-nowrap">
+                            {isDistributed ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                                🔴 {warehouseCount}개 창고
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )}
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                          {columns.map((key, colIdx) => (
+                            <td key={colIdx} className={`px-4 py-3 whitespace-nowrap ${isDistributed ? 'font-medium' : ''}`}>
+                              {typeof row[key as keyof typeof row] === 'number'
+                                ? formatNumber(row[key as keyof typeof row] as number)
+                                : String(row[key as keyof typeof row] || '')}
+                            </td>
+                          ))}
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
                 {data.wipInventoryData.length > 200 && (
