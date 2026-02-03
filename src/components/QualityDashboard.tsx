@@ -176,6 +176,10 @@ export default function QualityDashboard() {
   const [processFilter, setProcessFilter] = useState('all')
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'defectRate', direction: 'desc' })
 
+  // 불량 상세 팝업 상태
+  const [defectModalOpen, setDefectModalOpen] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
+
   // 전체 품질 통계
   const qualityStats = useMemo(() => {
     let totalProduction = 0
@@ -321,6 +325,47 @@ export default function QualityDashboard() {
     })
     return Array.from(set)
   }, [filteredData])
+
+  // 선택된 품목의 불량 상세 데이터
+  const defectDetails = useMemo(() => {
+    if (!selectedProduct) return []
+
+    return filteredData
+      .filter(row => {
+        const productName = row.품목명 || row.품목코드 || '기타'
+        const prod = parseNumber(row.생산수량)
+        const goodQty = parseNumber(row.양품수량)
+        const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+        return productName === selectedProduct && defectQty > 0
+      })
+      .map(row => {
+        const prod = parseNumber(row.생산수량)
+        const goodQty = parseNumber(row.양품수량)
+        const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+        // 설비명 찾기
+        const equipment = row['설비(라인)명'] || row['설비/라인'] || row['설비/Line'] ||
+                         row['설비/LINE'] || row['설비명'] || row.LINE || row.Line ||
+                         row['라인명'] || '-'
+        return {
+          생산일자: row.생산일자 || '',
+          공정: row.공정 || '',
+          설비: String(equipment),
+          생산수량: prod,
+          양품수량: goodQty,
+          불량수량: defectQty,
+          불량율: prod > 0 ? (defectQty / prod * 100).toFixed(1) + '%' : '0%',
+          불량유형: row.불량유형 || row['불량사유'] || '-',
+          작업자: row.작업자 || '-'
+        }
+      })
+      .sort((a, b) => a.생산일자.localeCompare(b.생산일자))
+  }, [filteredData, selectedProduct])
+
+  // 불량 상세 팝업 열기
+  const openDefectModal = (productName: string) => {
+    setSelectedProduct(productName)
+    setDefectModalOpen(true)
+  }
 
   // 정렬 핸들러
   const handleSort = (key: string) => {
@@ -493,7 +538,13 @@ export default function QualityDashboard() {
                     <td className="px-4 py-3 text-center text-slate-600">{item.process}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(item.production)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(item.good)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(item.defect)}</td>
+                    <td
+                      className="px-4 py-3 text-right tabular-nums text-red-600 cursor-pointer hover:bg-red-50 hover:underline"
+                      onClick={() => item.defect > 0 && openDefectModal(item.product)}
+                      title={item.defect > 0 ? '클릭하여 불량 상세 보기' : ''}
+                    >
+                      {formatNumber(item.defect)}
+                    </td>
                     <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(Math.round(item.defectAmount))}원</td>
                     <td className="px-4 py-3 text-right tabular-nums">{item.defectRate.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right tabular-nums">{item.yieldRate.toFixed(1)}%</td>
@@ -513,6 +564,103 @@ export default function QualityDashboard() {
           </div>
         )}
       </div>
+
+      {/* 불량 상세 팝업 모달 */}
+      {defectModalOpen && selectedProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setDefectModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-red-50 to-red-100">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <span className="text-red-500">🔴</span>
+                {selectedProduct} 불량 상세
+                <span className="text-sm font-normal text-slate-500">({defectDetails.length}건)</span>
+              </h3>
+              <button
+                onClick={() => setDefectModalOpen(false)}
+                className="p-2 hover:bg-red-200 rounded-lg transition"
+              >
+                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* 모달 내용 */}
+            <div className="overflow-auto max-h-[calc(80vh-130px)]">
+              {defectDetails.length === 0 ? (
+                <div className="p-8 text-center text-slate-500">
+                  해당 품목의 불량 상세 데이터가 없습니다.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">생산일자</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">공정</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">설비</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-600">생산수량</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-600">양품수량</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-600">불량수량</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-600">불량율</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">불량유형</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">작업자</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {defectDetails.map((row, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                        <td className="px-4 py-3">{row.생산일자}</td>
+                        <td className="px-4 py-3">{row.공정}</td>
+                        <td className="px-4 py-3">{row.설비}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.생산수량)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.양품수량)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-red-600 font-semibold">{formatNumber(row.불량수량)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-red-600">{row.불량율}</td>
+                        <td className="px-4 py-3">{row.불량유형}</td>
+                        <td className="px-4 py-3">{row.작업자}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* 모달 푸터 */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <div className="text-sm text-slate-500">
+                총 불량수량: <span className="font-bold text-red-600">{formatNumber(defectDetails.reduce((sum, r) => sum + r.불량수량, 0))}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    downloadExcel(defectDetails.map(r => ({
+                      생산일자: r.생산일자,
+                      공정: r.공정,
+                      설비: r.설비,
+                      생산수량: r.생산수량,
+                      양품수량: r.양품수량,
+                      불량수량: r.불량수량,
+                      '불량율(%)': r.불량율,
+                      불량유형: r.불량유형,
+                      작업자: r.작업자
+                    })), `${selectedProduct}_불량상세_${selectedMonth}월`)
+                  }}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium flex items-center gap-2"
+                >
+                  📥 엑셀 다운로드
+                </button>
+                <button
+                  onClick={() => setDefectModalOpen(false)}
+                  className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
