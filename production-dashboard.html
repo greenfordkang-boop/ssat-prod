@@ -1325,8 +1325,14 @@
         try {
           const newData = parseCTCSV(e.target.result);
           if (newData.length > 0) {
-            // 🔴 CT 데이터는 localStorage 기반으로 관리 (month 필드 유지를 위해)
-            // Supabase에서 로드하지 않음 - month 필드가 저장되지 않아 데이터 손실 발생
+            // 🔄 Supabase에서 최신 데이터 로드 (다른 사용자가 업로드한 데이터 포함)
+            if (supabaseConnected) {
+              const supabaseData = await loadFromSupabase('ct_data');
+              if (supabaseData && supabaseData.length > 0) {
+                state.ctData = supabaseData;
+                console.log('📥 Supabase에서 CT 데이터 로드:', supabaseData.length + '건');
+              }
+            }
 
             // 업로드된 데이터에 공정명과 월 정보 강제 지정
             const processedData = newData.map(d => ({
@@ -1352,11 +1358,10 @@
             render();
             setTimeout(() => { createCharts(); initTableSort(); }, 100);
 
-            // Supabase에는 월 정보 없이 저장 (백업용)
+            // 🔄 Supabase에 동기화 (month 컬럼 포함)
             if (supabaseConnected) {
-              // month 필드 제거하고 저장
-              const dataForSupabase = state.ctData.map(({ month, ...rest }) => rest);
-              await saveToSupabase('ct_data', dataForSupabase);
+              await saveToSupabase('ct_data', state.ctData);
+              console.log('✅ CT 데이터 Supabase 동기화 완료:', state.ctData.length + '건');
             }
           } else {
             alert('유효한 CT 데이터가 없습니다.');
