@@ -163,44 +163,20 @@ export default function DowntimeDashboard() {
     return result.slice(0, 20)
   }, [filteredData, reasonFilter, sortConfig])
 
-  // 가동율현황 데이터에서 그룹핑 기준 키 감지 (2번째 행 제목열)
-  const groupingKey = useMemo(() => {
-    if (filteredData.length === 0) return null
-
-    // 첫 번째 데이터 항목의 키들
-    const firstItem = filteredData[0]
-    const allKeys = Object.keys(firstItem)
-
-    // 제외할 키 (메타데이터, ID, 생산일자 등)
-    const excludeFromGrouping = ['id', 'data', '생산일자', 'date', '일자']
-    const candidateKeys = allKeys.filter(k => !excludeFromGrouping.some(ex => k.toLowerCase().includes(ex.toLowerCase())))
-
-    // 2번째 키 사용 (첫 번째 유효한 키가 보통 날짜, 두 번째가 LINE/설비 등)
-    const groupKey = candidateKeys.length > 0 ? candidateKeys[0] : null
-
-    console.log('📊 비가동 집계 기준 키:', groupKey, '(후보 키:', candidateKeys.slice(0, 5).join(', '), ')')
-    return groupKey
-  }, [filteredData])
-
-  // 설비별 비가동 분석 (가동율현황 2번째 행 제목열 기준)
+  // 설비별 비가동 분석 (설비/LINE 기준, 비가동유형은 2행 컬럼명 기준)
   const downtimeByEquipment = useMemo(() => {
     const equipMap = new Map<string, { total: number; downtime: number }>()
 
-    // 비가동 사유로 인식할 컬럼명 패턴 (제외 목록)
-    const excludeKeys = ['생산일자', '공정', '설비', 'LINE', '주/야간', '무인', '조업시간', '가동시간', '비가동합계', '시간가동율', '계획정지합계', '설비가동율', 'id', 'data']
+    // 비가동 사유 컬럼 (2행 제목: 금형교환, 조건설정대기 등) - 이 컬럼들의 값을 합산
+    // 제외할 키: 메타정보, 기준정보 컬럼
+    const excludeKeys = ['생산일자', '공정', '설비', 'LINE', '설비/LINE', '주/야간', '무인', '조업시간', '가동시간', '비가동합계', '시간가동율', '계획정지합계', '설비가동율', 'id', 'data']
 
     filteredData.forEach(item => {
-      // 가동율현황 2번째 행 제목열 기준으로 그룹핑
-      // 감지된 groupingKey가 있으면 사용, 없으면 기존 로직
-      let equip = '기타'
-      if (groupingKey && item[groupingKey as keyof typeof item] !== undefined) {
-        equip = String(item[groupingKey as keyof typeof item])
-      } else {
-        equip = String(
-          item.LINE || item['LINE'] || item['설비/LINE'] || item['설비(라인)명'] ||
-          item.equipment_name || item.설비명 || item.설비 || item.라인명 || '기타'
-        )
-      }
+      // 설비/LINE 컬럼 기준으로 그룹핑
+      const equip = String(
+        item['설비/LINE'] || item['설비(라인)명'] || item.LINE || item['LINE'] ||
+        item.equipment_name || item.설비명 || item.설비 || item.라인명 || '기타'
+      )
 
       // 가동시간
       const operatingTime = parseFloat(String(
@@ -243,7 +219,7 @@ export default function DowntimeDashboard() {
       }))
       .sort((a, b) => b.비가동시간 - a.비가동시간) // 비가동시간 큰 순으로 정렬
       .slice(0, 15)
-  }, [filteredData, groupingKey])
+  }, [filteredData])
 
   // 총 비가동시간 계산
   const totalDowntime = useMemo(() => {
