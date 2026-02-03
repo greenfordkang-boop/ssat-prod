@@ -801,11 +801,23 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                           </span>
                         </th>
                       ))}
+                      {/* 단가 & 재고금액 컬럼 추가 */}
+                      <th className="px-4 py-3 text-right font-semibold text-blue-600 whitespace-nowrap bg-blue-50">
+                        단가
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold text-emerald-600 whitespace-nowrap bg-emerald-50">
+                        재고금액
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredInventory.map((row, idx) => {
                       const itemCode = String(getFieldValue(row, '품목코드', 'itemCode', 'code') || '')
+                      const itemName = String(getFieldValue(row, '품목명', 'itemName', 'name') || '')
+                      const customerPN = String(getFieldValue(row, '고객사 P/N', '고객P/N', 'customerPN') || '')
+                      const qty = parseNumber(getFieldValue(row, '재고', '재고수량', 'quantity', 'qty'))
+                      const unitPrice = findPrice(data.priceData, itemCode, itemName, customerPN)
+                      const amount = qty * unitPrice
                       const warehouseCount = getWarehouseCount(itemCode)
                       const isDistributed = warehouseCount > 1
 
@@ -832,6 +844,14 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                                 : String(row[key as keyof typeof row] || '')}
                             </td>
                           ))}
+                          {/* 단가 컬럼 */}
+                          <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums ${unitPrice > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                            {unitPrice > 0 ? `${formatNumber(unitPrice)}원` : '-'}
+                          </td>
+                          {/* 재고금액 컬럼 */}
+                          <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium ${amount > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                            {amount > 0 ? `${formatNumber(Math.round(amount))}원` : '-'}
+                          </td>
                         </tr>
                       )
                     })}
