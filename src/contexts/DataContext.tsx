@@ -109,7 +109,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (deleteError) throw deleteError
 
-      // 새 데이터 준비
+      // 새 데이터 준비 - 빈 키 필터링 추가
       let insertData: Record<string, unknown>[]
       if (JSONB_TABLES.includes(tableName)) {
         insertData = items.map(item => ({ data: item }))
@@ -118,7 +118,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
           const result: Record<string, unknown> = {}
           const obj = item as Record<string, unknown>
           for (const key in obj) {
+            // 빈 키 건너뛰기
+            if (!key || key.trim() === '') continue
+
             const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase()
+            // 빈 snake_key도 건너뛰기
+            if (!snakeKey || snakeKey.trim() === '' || snakeKey === '_') continue
+
             const value = obj[key]
             if (value && typeof value === 'object' && !Array.isArray(value)) {
               result[snakeKey] = JSON.stringify(value)

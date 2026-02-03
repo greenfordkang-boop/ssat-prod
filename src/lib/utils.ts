@@ -88,12 +88,23 @@ export const PROCESS_MAPPING = {
 // 제외 공정
 export const EXCLUDED_PROCESSES = ['Laser', 'LASER', 'laser']
 
-// CSV 파싱
+// CSV 파싱 - 빈 헤더 필터링 추가
 export function parseCSV(text: string): Record<string, string>[] {
   const lines = text.split('\n').filter(line => line.trim())
   if (lines.length < 2) return []
 
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^\uFEFF/, ''))
+  // 헤더 파싱 및 빈 헤더 필터링
+  const rawHeaders = lines[0].split(',').map(h => h.trim().replace(/^\uFEFF/, ''))
+  const validHeaderIndices: number[] = []
+  const headers: string[] = []
+
+  rawHeaders.forEach((h, i) => {
+    if (h && h.length > 0) {
+      validHeaderIndices.push(i)
+      headers.push(h)
+    }
+  })
+
   const data: Record<string, string>[] = []
 
   for (let i = 1; i < lines.length; i++) {
@@ -112,8 +123,10 @@ export function parseCSV(text: string): Record<string, string>[] {
     values.push(current.trim())
 
     const row: Record<string, string> = {}
-    headers.forEach((header, index) => {
-      row[header] = values[index] || ''
+    // 유효한 헤더 인덱스만 사용
+    headers.forEach((header, idx) => {
+      const valueIndex = validHeaderIndices[idx]
+      row[header] = values[valueIndex] || ''
     })
     data.push(row)
   }
