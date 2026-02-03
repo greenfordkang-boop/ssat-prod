@@ -4,7 +4,6 @@ import { useMemo } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
 import { formatNumber, parseNumber, PROCESS_MAPPING, CHART_COLORS } from '@/lib/utils'
-import FileUploader from './FileUploader'
 
 interface ProcessDashboardProps {
   process: string
@@ -28,13 +27,6 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     let good = 0
     let defect = 0
     let workTime = 0
-
-    // 디버깅: 첫 번째 행 구조 확인
-    if (processData.length > 0) {
-      console.log('📊 데이터 샘플:', processData[0])
-      console.log('📊 데이터 키:', Object.keys(processData[0]))
-      console.log('📊 불량수량 값:', processData[0].불량수량, processData[0]['불량수량'])
-    }
 
     processData.forEach(row => {
       production += parseNumber(row.생산수량)
@@ -113,18 +105,52 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     })).slice(0, 20)
   }, [processData])
 
+  // CT 데이터 분석 (해당 공정)
+  const ctAnalysis = useMemo(() => {
+    const processCT = data.ctData.filter(row =>
+      row.공정 === processName || row.process === processName
+    )
+
+    return processCT.map(row => ({
+      equipment: row['설비(라인)명'] || row.equipment || row.설비명 || '기타',
+      product: row.품목명 || row.product || '',
+      standardCT: parseNumber(row['표준C/T'] || row.standardCT || row['표준CT'] || 0),
+      actualCT: parseNumber(row['실제C/T'] || row.actualCT || row['실제CT'] || 0),
+      efficiency: parseNumber(row['표준C/T'] || row.standardCT || 0) > 0
+        ? (parseNumber(row['표준C/T'] || row.standardCT || 0) / parseNumber(row['실제C/T'] || row.actualCT || 1) * 100)
+        : 0
+    })).slice(0, 50)
+  }, [data.ctData, processName])
+
+  // 검포장 데이터
+  const packagingData = useMemo(() => {
+    return data.packagingStatusData.filter(row =>
+      row.공정 === processName || !row.공정
+    ).slice(0, 50)
+  }, [data.packagingStatusData, processName])
+
+  // 불량수리 데이터
+  const repairData = useMemo(() => {
+    return data.repairStatusData.filter(row =>
+      row.공정 === processName || !row.공정
+    ).slice(0, 50)
+  }, [data.repairStatusData, processName])
+
+  // 자재불량 데이터
+  const materialDefectData = useMemo(() => {
+    return data.materialDefectData.filter(row =>
+      row.공정 === processName || !row.공정
+    ).slice(0, 50)
+  }, [data.materialDefectData, processName])
+
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
+      {/* Header - 업로드 버튼 제거 */}
       <div className="flex items-center justify-between bg-white rounded-xl p-5 border border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-1 h-6 bg-blue-500 rounded" />
           <h2 className="text-xl font-bold text-gray-900">{selectedMonth}월 {processName}공정 현황</h2>
           <span className="text-sm text-gray-500">({processData.length}건)</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <FileUploader dataType="rawData" label="생산실적" />
-          <FileUploader dataType="ctData" label="CT데이터" />
         </div>
       </div>
 
@@ -223,50 +249,87 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       {subMenu === 'uph' && (
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-base font-semibold mb-4">UPH 현황</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">설비</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">품목</th>
-                  <th className="px-4 py-3 text-right font-semibold text-slate-600">UPH</th>
-                  <th className="px-4 py-3 text-right font-semibold text-slate-600">표준CT</th>
-                  <th className="px-4 py-3 text-right font-semibold text-slate-600">실제CT</th>
-                  <th className="px-4 py-3 text-right font-semibold text-slate-600">CT효율</th>
-                </tr>
-              </thead>
-              <tbody>
-                {uphAnalysis.map((row, idx) => (
-                  <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                    <td className="px-4 py-3">{row.equipment}</td>
-                    <td className="px-4 py-3 max-w-xs truncate">{row.product}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(row.uph)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{row.standardCT.toFixed(1)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{row.actualCT.toFixed(1)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        row.ctEfficiency >= 100 ? 'bg-green-100 text-green-700' :
-                        row.ctEfficiency >= 80 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {row.ctEfficiency.toFixed(1)}%
-                      </span>
-                    </td>
+          {uphAnalysis.length === 0 ? (
+            <p className="text-gray-500">해당 공정의 UPH 데이터가 없습니다.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="px-4 py-3 text-left font-semibold text-slate-600">설비</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-600">품목</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-600">UPH</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-600">표준CT</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-600">실제CT</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-600">CT효율</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {uphAnalysis.map((row, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                      <td className="px-4 py-3">{row.equipment}</td>
+                      <td className="px-4 py-3 max-w-xs truncate">{row.product}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(row.uph)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{row.standardCT.toFixed(1)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{row.actualCT.toFixed(1)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          row.ctEfficiency >= 100 ? 'bg-green-100 text-green-700' :
+                          row.ctEfficiency >= 80 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {row.ctEfficiency.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
       {subMenu === 'cycletime' && (
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-base font-semibold mb-4">Cycle Time 분석</h3>
-          <p className="text-gray-500">CT 데이터를 업로드하면 Cycle Time 분석이 표시됩니다.</p>
-          {data.ctData.length > 0 && (
-            <div className="mt-4">
-              <p className="text-sm text-gray-600">{data.ctData.length}건의 CT 데이터가 있습니다.</p>
+          {ctAnalysis.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-gray-500">해당 공정의 CT 데이터가 없습니다.</p>
+              <p className="text-sm text-gray-400 mt-2">전체 CT 데이터: {data.ctData.length}건</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="px-4 py-3 text-left font-semibold text-slate-600">설비</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-600">품목</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-600">표준CT</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-600">실제CT</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-600">CT효율</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ctAnalysis.map((row, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                      <td className="px-4 py-3">{row.equipment}</td>
+                      <td className="px-4 py-3 max-w-xs truncate">{row.product}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{row.standardCT.toFixed(1)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{row.actualCT.toFixed(1)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          row.efficiency >= 100 ? 'bg-green-100 text-green-700' :
+                          row.efficiency >= 80 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {row.efficiency.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -275,24 +338,90 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       {subMenu === 'packaging' && (
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-base font-semibold mb-4">검포장 현황</h3>
-          <FileUploader dataType="packagingStatusData" label="검포장데이터" />
-          <p className="text-gray-500 mt-4">검포장 데이터를 업로드하면 현황이 표시됩니다.</p>
+          {packagingData.length === 0 ? (
+            <p className="text-gray-500">검포장 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {Object.keys(packagingData[0] || {}).slice(0, 8).map(key => (
+                      <th key={key} className="px-4 py-3 text-left font-semibold text-slate-600">{key}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {packagingData.map((row, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                      {Object.values(row).slice(0, 8).map((val, i) => (
+                        <td key={i} className="px-4 py-3">{String(val || '')}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
       {subMenu === 'defect-repair' && (
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-base font-semibold mb-4">불량수리 현황</h3>
-          <FileUploader dataType="repairStatusData" label="불량수리데이터" />
-          <p className="text-gray-500 mt-4">불량수리 데이터를 업로드하면 현황이 표시됩니다.</p>
+          {repairData.length === 0 ? (
+            <p className="text-gray-500">불량수리 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {Object.keys(repairData[0] || {}).slice(0, 8).map(key => (
+                      <th key={key} className="px-4 py-3 text-left font-semibold text-slate-600">{key}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {repairData.map((row, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                      {Object.values(row).slice(0, 8).map((val, i) => (
+                        <td key={i} className="px-4 py-3">{String(val || '')}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
       {subMenu === 'material-defect' && (
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-base font-semibold mb-4">자재불량 현황</h3>
-          <FileUploader dataType="materialDefectData" label="자재불량데이터" />
-          <p className="text-gray-500 mt-4">자재불량 데이터를 업로드하면 현황이 표시됩니다.</p>
+          {materialDefectData.length === 0 ? (
+            <p className="text-gray-500">자재불량 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {Object.keys(materialDefectData[0] || {}).slice(0, 8).map(key => (
+                      <th key={key} className="px-4 py-3 text-left font-semibold text-slate-600">{key}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {materialDefectData.map((row, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                      {Object.values(row).slice(0, 8).map((val, i) => (
+                        <td key={i} className="px-4 py-3">{String(val || '')}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
