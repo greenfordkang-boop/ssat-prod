@@ -894,6 +894,25 @@
           if (data && data.length > 0) {
             state[stateKey] = data;
             console.log(`📥 ${tableName}: ${data.length}건 로드`);
+
+            // localStorage에도 저장 (다른 컴퓨터 동기화)
+            if (stateKey === 'rawData') {
+              saveToStorage(data);
+            } else if (stateKey === 'availabilityData') {
+              saveAvailabilityToStorage(data);
+            } else if (stateKey === 'detailData') {
+              saveDetailToStorage(data);
+            } else if (stateKey === 'ctData') {
+              try { localStorage.setItem(CT_DATA_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'materialDefectData') {
+              try { localStorage.setItem(MATERIAL_DEFECT_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'wipInventoryData') {
+              try { localStorage.setItem(WIP_INVENTORY_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'repairStatusData') {
+              try { localStorage.setItem(REPAIR_STATUS_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'packagingStatusData') {
+              try { localStorage.setItem(PACKAGING_STATUS_KEY, JSON.stringify(data)); } catch(e) {}
+            }
           }
         }
         return true;
@@ -7325,6 +7344,15 @@
         const newMonths = getMonthsFromData(newData);
         const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
 
+        // Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
+        if (supabaseConnected) {
+          const supabaseData = await loadFromSupabase('production_data');
+          if (supabaseData && supabaseData.length > 0) {
+            state.rawData = supabaseData;
+            console.log('📥 Supabase에서 최신 생산 데이터 로드:', supabaseData.length + '건');
+          }
+        }
+
         // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
         const filteredExisting = removeMonthsFromData(state.rawData, newMonths);
         state.rawData = [...filteredExisting, ...newData];
@@ -7359,6 +7387,15 @@
         // 새 데이터에서 월 추출
         const newMonths = getMonthsFromData(newData);
         const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
+
+        // Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
+        if (supabaseConnected) {
+          const supabaseData = await loadFromSupabase('availability_data');
+          if (supabaseData && supabaseData.length > 0) {
+            state.availabilityData = supabaseData;
+            console.log('📥 Supabase에서 최신 가동율 데이터 로드:', supabaseData.length + '건');
+          }
+        }
 
         // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
         const filteredExisting = removeMonthsFromData(state.availabilityData, newMonths);
