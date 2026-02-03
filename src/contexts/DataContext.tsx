@@ -78,25 +78,40 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const PAGE_SIZE = 1000
       let offset = 0
       let hasMore = true
+      let pageCount = 0
+
+      console.log(`🔍 [${tableName}] 데이터 로딩 시작...`)
 
       while (hasMore) {
-        const { data: result, error } = await supabase
+        pageCount++
+        const { data: result, error, count } = await supabase
           .from(tableName)
-          .select('*')
+          .select('*', { count: 'exact' })
           .range(offset, offset + PAGE_SIZE - 1)
           .order('id', { ascending: true })
 
-        if (error) throw error
+        if (error) {
+          console.error(`❌ [${tableName}] 쿼리 에러:`, error)
+          throw error
+        }
+
+        console.log(`📄 [${tableName}] 페이지${pageCount}: ${result?.length || 0}건 (offset: ${offset}, 총: ${count})`)
 
         if (!result || result.length === 0) {
           hasMore = false
         } else {
           // JSONB 테이블 처리
           if (JSONB_TABLES.includes(tableName)) {
-            if (result.length > 0 && result[0].data !== undefined) {
-              allData.push(...result.map(row => row.data).filter(Boolean))
+            // data 컬럼 존재 여부 확인
+            const hasDataColumn = result[0] && 'data' in result[0]
+            if (hasDataColumn) {
+              const extracted = result.map(row => row.data).filter(Boolean)
+              allData.push(...extracted)
+              console.log(`  → JSONB data 컬럼에서 ${extracted.length}건 추출`)
             } else {
+              // data 컬럼이 없으면 전체 row 사용
               allData.push(...result.map(toCamelCase))
+              console.log(`  → 전체 row에서 ${result.length}건 추출 (camelCase 변환)`)
             }
           } else {
             allData.push(...result.map(toCamelCase))
@@ -111,10 +126,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      console.log(`📥 ${tableName}: 총 ${allData.length}건 로드 완료`)
+      console.log(`✅ [${tableName}] 총 ${allData.length}건 로드 완료 (${pageCount} 페이지)`)
       return allData
     } catch (e) {
-      console.error(`로드 실패 (${tableName}):`, e)
+      console.error(`❌ 로드 실패 (${tableName}):`, e)
       return []
     }
   }
@@ -124,18 +139,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!items || items.length === 0) return true
 
     try {
+      console.log(`🔄 [${tableName}] 저장 시작: ${items.length}건`)
+
       // 기존 데이터 삭제
       const { error: deleteError } = await supabase
         .from(tableName)
         .delete()
         .neq('id', 0)
 
-      if (deleteError) throw deleteError
+      if (deleteError) {
+        console.error(`❌ [${tableName}] 삭제 실패:`, deleteError)
+        throw deleteError
+      }
+      console.log(`🗑️ [${tableName}] 기존 데이터 삭제 완료`)
 
       // 새 데이터 준비 - 빈 키 필터링 추가
       let insertData: Record<string, unknown>[]
       if (JSONB_TABLES.includes(tableName)) {
         insertData = items.map(item => ({ data: item }))
+        console.log(`📦 [${tableName}] JSONB 형식으로 변환 완료`)
       } else {
         insertData = items.map(item => {
           const result: Record<string, unknown> = {}
@@ -170,17 +192,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const batch = insertData.slice(i, i + BATCH_SIZE)
         const { error } = await supabase.from(tableName).insert(batch)
         if (error) {
-          console.error(`배치 저장 실패 (${tableName}):`, error)
+          console.error(`❌ [${tableName}] 배치 저장 실패:`, error)
           console.error('실패한 배치 첫번째 행:', JSON.stringify(batch[0], null, 2))
           console.error('실패한 배치 키:', Object.keys(batch[0] || {}))
           throw error
         }
-        console.log(`저장 완료: ${tableName} ${i + batch.length}/${insertData.length}건`)
+        console.log(`💾 [${tableName}] 저장 진행: ${i + batch.length}/${insertData.length}건`)
+      }
+
+      // 저장 후 검증: 실제 저장된 건수 확인
+      const { count, error: countError } = await supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true })
+
+      if (countError) {
+        console.warn(`⚠️ [${tableName}] 검증 쿼리 실패:`, countError)
+      } else {
+        console.log(`✅ [${tableName}] 저장 완료 및 검증: DB에 ${count}건 확인 (업로드 ${items.length}건)`)
+        if (count !== items.length) {
+          console.warn(`⚠️ [${tableName}] 건수 불일치! 업로드: ${items.length}, DB: ${count}`)
+        }
       }
 
       return true
     } catch (e) {
-      console.error(`저장 실패 (${tableName}):`, e)
+      console.error(`❌ 저장 실패 (${tableName}):`, e)
       return false
     }
   }
@@ -189,6 +225,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const refreshData = useCallback(async () => {
     if (!user || loading) return // 이미 로딩 중이면 중복 호출 방지
 
+    console.log('🔄 ========== 데이터 새로고침 시작 ==========')
+    console.log('👤 현재 사용자:', user.email)
+
     setLoading(true)
     try {
       const results: Partial<DashboardData> = {}
@@ -196,12 +235,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
         const loaded = await loadFromSupabase(tableName)
         results[stateKey as keyof DashboardData] = loaded as never
-        console.log(`🔄 ${tableName}: ${loaded.length}건 새로고침`)
       }
 
       setData(prev => ({ ...prev, ...results }))
+
+      // 로드 결과 요약
+      console.log('📊 ========== 새로고침 결과 요약 ==========')
+      for (const [key, value] of Object.entries(results)) {
+        console.log(`   ${key}: ${(value as unknown[]).length}건`)
+      }
+      console.log('==========================================')
     } catch (e) {
-      console.error('데이터 새로고침 실패:', e)
+      console.error('❌ 데이터 새로고침 실패:', e)
     } finally {
       setLoading(false)
     }
@@ -321,6 +366,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const loadInitialData = async () => {
       if (!user || loading) return
 
+      console.log('🚀 ========== 초기 데이터 로드 시작 ==========')
+      console.log('👤 사용자:', user.email)
+      console.log('🌐 Supabase URL:', 'gipksxojxdkqpyyiihcc.supabase.co')
+
       setLoading(true)
       try {
         const results: Partial<DashboardData> = {}
@@ -329,14 +378,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
           if (!isMounted) return
           const loaded = await loadFromSupabase(tableName)
           results[stateKey as keyof DashboardData] = loaded as never
-          console.log(`📥 ${tableName}: ${loaded.length}건 로드`)
         }
 
         if (isMounted) {
           setData(prev => ({ ...prev, ...results }))
+
+          // 로드 결과 요약
+          console.log('📊 ========== 초기 로드 결과 요약 ==========')
+          for (const [key, value] of Object.entries(results)) {
+            console.log(`   ${key}: ${(value as unknown[]).length}건`)
+          }
+          console.log('==========================================')
         }
       } catch (e) {
-        console.error('데이터 로드 실패:', e)
+        console.error('❌ 초기 데이터 로드 실패:', e)
       } finally {
         if (isMounted) {
           setLoading(false)
