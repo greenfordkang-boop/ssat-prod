@@ -134,6 +134,61 @@ export function parseCSV(text: string): Record<string, string>[] {
   return data
 }
 
+// 가동율 CSV 파싱 - 2행을 헤더로 사용 (비가동 사유가 2행에 있음)
+export function parseAvailabilityCSV(text: string): Record<string, string>[] {
+  const lines = text.split('\n').filter(line => line.trim())
+  if (lines.length < 3) return [] // 최소 3행 필요 (1행: 메인헤더, 2행: 서브헤더, 3행~: 데이터)
+
+  // 2행을 헤더로 사용 (비가동 사유명)
+  const rawHeaders = lines[1].split(',').map(h => h.trim().replace(/^\uFEFF/, ''))
+  const validHeaderIndices: number[] = []
+  const headers: string[] = []
+
+  rawHeaders.forEach((h, i) => {
+    if (h && h.length > 0) {
+      validHeaderIndices.push(i)
+      // 중복 헤더 처리: 이미 존재하면 _2, _3 등 추가
+      let finalHeader = h
+      let count = 1
+      while (headers.includes(finalHeader)) {
+        count++
+        finalHeader = `${h}_${count}`
+      }
+      headers.push(finalHeader)
+    }
+  })
+
+  console.log('📋 가동율 CSV 헤더 (2행 기준):', headers.slice(0, 10).join(', '), '...')
+
+  const data: Record<string, string>[] = []
+
+  // 3행부터 데이터 (인덱스 2부터)
+  for (let i = 2; i < lines.length; i++) {
+    const values: string[] = []
+    let current = ''
+    let inQuotes = false
+
+    for (const char of lines[i]) {
+      if (char === '"') inQuotes = !inQuotes
+      else if (char === ',' && !inQuotes) {
+        values.push(current.trim())
+        current = ''
+      }
+      else current += char
+    }
+    values.push(current.trim())
+
+    const row: Record<string, string> = {}
+    headers.forEach((header, idx) => {
+      const valueIndex = validHeaderIndices[idx]
+      row[header] = values[valueIndex] || ''
+    })
+    data.push(row)
+  }
+
+  return data
+}
+
 // 날짜 포맷팅
 export function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return ''

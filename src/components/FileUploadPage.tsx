@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { useData } from '@/contexts/DataContext'
-import { parseCSV } from '@/lib/utils'
+import { parseCSV, parseAvailabilityCSV } from '@/lib/utils'
 import * as XLSX from 'xlsx'
 
 // 엑셀 파일 파싱 함수
@@ -11,6 +11,26 @@ const parseExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
   const firstSheetName = workbook.SheetNames[0]
   const worksheet = workbook.Sheets[firstSheetName]
   const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+  return jsonData as Record<string, unknown>[]
+}
+
+// 가동율 엑셀 파싱 - 2행을 헤더로 사용
+const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
+  const workbook = XLSX.read(buffer, { type: 'array' })
+  const firstSheetName = workbook.SheetNames[0]
+  const worksheet = workbook.Sheets[firstSheetName]
+
+  // 2행을 헤더로, 3행부터 데이터로 사용 (range: 1은 2행부터 시작)
+  const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+    defval: '',
+    range: 1  // 2행부터 시작 (0-based index)
+  })
+
+  console.log('📊 가동율 엑셀 파싱 완료 (2행 헤더 사용):', jsonData.length, '건')
+  if (jsonData.length > 0) {
+    console.log('📋 헤더 키:', Object.keys(jsonData[0] as object).slice(0, 10).join(', '), '...')
+  }
+
   return jsonData as Record<string, unknown>[]
 }
 
@@ -71,11 +91,22 @@ export default function FileUploadPage() {
       if (ext === 'xlsx' || ext === 'xls') {
         // 엑셀 파일 파싱
         const buffer = await file.arrayBuffer()
-        parsedData = parseExcel(buffer)
+        // 가동율 데이터는 2행을 헤더로 사용 (비가동 사유가 2행에 있음)
+        if (dataKey === 'availabilityData') {
+          parsedData = parseAvailabilityExcel(buffer)
+        } else {
+          parsedData = parseExcel(buffer)
+        }
       } else if (ext === 'csv') {
         // CSV 파일 파싱
         const text = await file.text()
-        parsedData = parseCSV(text)
+        // 가동율 데이터는 2행을 헤더로 사용 (비가동 사유가 2행에 있음)
+        if (dataKey === 'availabilityData') {
+          parsedData = parseAvailabilityCSV(text)
+          console.log('📊 가동율 CSV 파싱 완료 (2행 헤더 사용):', parsedData.length, '건')
+        } else {
+          parsedData = parseCSV(text)
+        }
       } else {
         alert('지원하지 않는 파일 형식입니다. (csv, xlsx, xls만 가능)')
         setUploadingId(null)
