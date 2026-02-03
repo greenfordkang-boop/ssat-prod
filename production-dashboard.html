@@ -4286,9 +4286,12 @@
         // 정확히 일치하거나, 공정명을 포함하는 경우 매칭
         const processMatch = ctProcess === pName || ctProcess.includes(pName) || pName.includes(ctProcess);
 
-        // 🔴 월별 필터링: CT 데이터에 month 필드가 있으면 현재 선택된 월과 비교
-        if (filterByMonth && d.month && d.month !== state.selectedMonth) {
-          return false;
+        // 🔴 월별 필터링 (엄격 모드)
+        if (filterByMonth) {
+          // month 필드가 없는 데이터는 표시하지 않음 (재업로드 필요)
+          if (!d.month) return false;
+          // 선택된 월과 다르면 제외
+          if (d.month !== state.selectedMonth) return false;
         }
 
         return processMatch;
