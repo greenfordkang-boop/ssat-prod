@@ -141,7 +141,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       for (let i = 0; i < insertData.length; i += BATCH_SIZE) {
         const batch = insertData.slice(i, i + BATCH_SIZE)
         const { error } = await supabase.from(tableName).insert(batch)
-        if (error) throw error
+        if (error) {
+          console.error(`배치 저장 실패 (${tableName}):`, error)
+          console.error('실패한 배치 첫번째 행:', JSON.stringify(batch[0], null, 2))
+          console.error('실패한 배치 키:', Object.keys(batch[0] || {}))
+          throw error
+        }
         console.log(`저장 완료: ${tableName} ${i + batch.length}/${insertData.length}건`)
       }
 
