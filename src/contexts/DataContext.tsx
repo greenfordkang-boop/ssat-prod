@@ -55,7 +55,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [syncing, setSyncing] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [filters, setFilters] = useState<FilterState>({ process: 'all', equipment: 'all', product: 'all' })
-  const [pivot, setPivot] = useState<PivotConfig>({ rows: '공정', cols: '품종', values: '생산수량', aggFunc: 'sum' })
+  const [pivot, setPivot] = useState<PivotConfig>({ rows: ['공정'], cols: ['품종'], values: '생산수량', aggFunc: 'sum' })
 
   // 중복 로딩 방지를 위한 ref
   const isLoadingRef = useRef(false)

@@ -1,10 +1,93 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { formatNumber, parseNumber, EXCLUDED_PROCESSES } from '@/lib/utils'
 
 type AggFunc = 'sum' | 'count' | 'avg'
+
+// 다중 선택 드롭다운 컴포넌트
+function MultiSelectDropdown({
+  label,
+  options,
+  selected,
+  onChange
+}: {
+  label: string
+  options: string[]
+  selected: string[]
+  onChange: (selected: string[]) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const toggleOption = (option: string) => {
+    if (selected.includes(option)) {
+      onChange(selected.filter(s => s !== option))
+    } else {
+      onChange([...selected, option])
+    }
+  }
+
+  const displayText = selected.length === 0
+    ? '선택 안함'
+    : selected.length === 1
+      ? selected[0]
+      : `${selected[0]} 외 ${selected.length - 1}개`
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-sm font-medium text-slate-600">{label}:</label>
+      <div ref={dropdownRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm min-w-[140px] text-left flex items-center justify-between gap-2"
+        >
+          <span className="truncate">{displayText}</span>
+          <span className="text-slate-400">▼</span>
+        </button>
+        {isOpen && (
+          <div className="absolute z-50 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            <div className="p-2 border-b border-slate-100">
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="text-xs text-slate-500 hover:text-slate-700"
+              >
+                선택 해제
+              </button>
+            </div>
+            {options.map(option => (
+              <label
+                key={option}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(option)}
+                  onChange={() => toggleOption(option)}
+                  className="rounded border-slate-300"
+                />
+                <span className="text-sm text-slate-700 truncate">{option}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function PivotDashboard() {
   const { data, selectedMonth, getFilteredData, pivot, setPivot } = useData()
@@ -26,16 +109,16 @@ export default function PivotDashboard() {
     return ['생산수량', '양품수량', '불량수량', '폐기수량', '작업시간(분)', '작업인원', 'UPH', 'UPPH']
   }, [])
 
-  // 피봇 테이블 생성
+  // 피봇 테이블 생성 (다중 행/열 지원)
   const pivotTable = useMemo(() => {
     if (filteredData.length === 0) return { rows: [], cols: [], data: {}, rowTotals: {}, colTotals: {}, grandTotal: 0 }
 
-    const rowField = pivot.rows
-    const colField = pivot.cols
+    const rowFields = pivot.rows
+    const colFields = pivot.cols
     const valueField = pivot.values
     const aggFunc = pivot.aggFunc
 
-    // 유니크 행/열 값
+    // 유니크 행/열 값 (복합키)
     const rowSet = new Set<string>()
     const colSet = new Set<string>()
 
@@ -46,8 +129,13 @@ export default function PivotDashboard() {
       const process = row.공정 || ''
       if (EXCLUDED_PROCESSES.includes(process)) return
 
-      const rowVal = String(row[rowField as keyof typeof row] || '기타')
-      const colVal = String(row[colField as keyof typeof row] || '기타')
+      // 복합키 생성 (여러 필드 조합)
+      const rowVal = rowFields.length === 0
+        ? '전체'
+        : rowFields.map(f => String(row[f as keyof typeof row] || '기타')).join(' | ')
+      const colVal = colFields.length === 0
+        ? '전체'
+        : colFields.map(f => String(row[f as keyof typeof row] || '기타')).join(' | ')
       const value = parseNumber(row[valueField as keyof typeof row] as string | number)
 
       rowSet.add(rowVal)
@@ -103,8 +191,12 @@ export default function PivotDashboard() {
 
     const { rows, cols, data, rowTotals, colTotals, grandTotal } = pivotTable
 
+    // 헤더 라벨
+    const rowLabel = pivot.rows.length === 0 ? '-' : pivot.rows.join(' | ')
+    const colLabel = pivot.cols.length === 0 ? '-' : pivot.cols.join(' | ')
+
     // CSV 생성
-    let csv = `${pivot.rows} \\ ${pivot.cols}`
+    let csv = `${rowLabel} \\ ${colLabel}`
     cols.forEach(col => { csv += `,${col}` })
     csv += ',합계\n'
 
@@ -135,8 +227,12 @@ export default function PivotDashboard() {
 
   // 초기화
   const handleReset = () => {
-    setPivot({ rows: '공정', cols: '품종', values: '생산수량', aggFunc: 'sum' })
+    setPivot({ rows: ['공정'], cols: ['품종'], values: '생산수량', aggFunc: 'sum' })
   }
+
+  // 헤더 라벨 생성
+  const rowLabel = pivot.rows.length === 0 ? '-' : pivot.rows.join(' | ')
+  const colLabel = pivot.cols.length === 0 ? '-' : pivot.cols.join(' | ')
 
   // 데이터 없음
   if (data.rawData.length === 0) {
@@ -182,33 +278,21 @@ export default function PivotDashboard() {
       {/* 피봇 설정 */}
       <div className="bg-white rounded-xl p-6 border border-slate-200">
         <div className="flex flex-wrap items-center gap-6">
-          {/* 행 */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-slate-600">행:</label>
-            <select
-              value={pivot.rows}
-              onChange={(e) => setPivot({ ...pivot, rows: e.target.value })}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm min-w-[120px]"
-            >
-              {fields.map(f => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          </div>
+          {/* 행 - 다중 선택 */}
+          <MultiSelectDropdown
+            label="행"
+            options={fields}
+            selected={pivot.rows}
+            onChange={(selected) => setPivot({ ...pivot, rows: selected })}
+          />
 
-          {/* 열 */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-slate-600">열:</label>
-            <select
-              value={pivot.cols}
-              onChange={(e) => setPivot({ ...pivot, cols: e.target.value })}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm min-w-[120px]"
-            >
-              {fields.map(f => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          </div>
+          {/* 열 - 다중 선택 */}
+          <MultiSelectDropdown
+            label="열"
+            options={fields}
+            selected={pivot.cols}
+            onChange={(selected) => setPivot({ ...pivot, cols: selected })}
+          />
 
           {/* 값 */}
           <div className="flex items-center gap-2">
@@ -263,7 +347,7 @@ export default function PivotDashboard() {
               <thead className="bg-slate-100 sticky top-0">
                 <tr>
                   <th className="text-left px-3 py-2 font-semibold text-slate-600 border border-slate-200 min-w-[100px]">
-                    {pivot.rows} \ {pivot.cols}
+                    {rowLabel} \ {colLabel}
                   </th>
                   {pivotTable.cols.map(col => (
                     <th key={col} className="text-right px-3 py-2 font-semibold text-slate-600 border border-slate-200 min-w-[80px] whitespace-nowrap">

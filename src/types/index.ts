@@ -129,8 +129,8 @@ export interface FilterState {
 
 // 피봇 설정
 export interface PivotConfig {
-  rows: string
-  cols: string
+  rows: string[]
+  cols: string[]
   values: string
   aggFunc: 'sum' | 'count' | 'avg'
 }

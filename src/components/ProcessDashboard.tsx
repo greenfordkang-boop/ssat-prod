@@ -88,6 +88,10 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   const [defectModalOpen, setDefectModalOpen] = useState(false)
   const [selectedEquipment, setSelectedEquipment] = useState<string | null>(null)
 
+  // CT 상세 팝업 상태
+  const [ctModalOpen, setCtModalOpen] = useState(false)
+  const [selectedCtEquipment, setSelectedCtEquipment] = useState<string | null>(null)
+
   // 정렬 상태
   const [equipSort, setEquipSort] = useState<SortConfig>(null)
   const [uphSort, setUphSort] = useState<SortConfig>(null)
@@ -356,6 +360,46 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
     return result.slice(0, 50)
   }, [data.ctData, processName, ctSort])
+
+  // 선택된 설비의 CT 상세 데이터
+  const ctDetails = useMemo(() => {
+    if (!selectedCtEquipment) return []
+
+    const processCT = data.ctData.filter(row =>
+      row.공정 === processName || row.process === processName
+    )
+
+    return processCT
+      .filter(row => {
+        const equipment = String(
+          row['설비(라인)명'] || row['설비/LINE'] || row['설비/Line'] ||
+          row.LINE || row.Line || row.설비명 || row.equipment ||
+          row['라인명'] || row['설비'] || '기타'
+        )
+        return equipment === selectedCtEquipment
+      })
+      .map(row => {
+        const standardCT = findCTValue(row, 'standard')
+        const actualCT = findCTValue(row, 'actual')
+        const product = String(row.품목명 || row.품목코드 || row.product || row['품목'] || '-')
+        const date = String(row.생산일자 || row.date || row['일자'] || '-')
+
+        return {
+          생산일자: date,
+          품목명: product,
+          표준CT: standardCT,
+          실제CT: actualCT,
+          CT효율: standardCT > 0 && actualCT > 0 ? (standardCT / actualCT * 100) : 0,
+          차이: actualCT - standardCT
+        }
+      })
+  }, [data.ctData, processName, selectedCtEquipment])
+
+  // CT 상세 팝업 열기
+  const openCtModal = (equipmentName: string) => {
+    setSelectedCtEquipment(equipmentName)
+    setCtModalOpen(true)
+  }
 
   // 검포장 데이터
   const packagingData = useMemo(() => {
