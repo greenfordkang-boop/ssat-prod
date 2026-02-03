@@ -474,6 +474,241 @@
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 실시간 동기화 설정 (Realtime + Polling + Focus)
+    // ══════════════════════════════════════════════════════════════════
+    let realtimeSubscription = null;
+    let syncInterval = null;
+    const SYNC_INTERVAL_MS = 30000; // 30초마다 자동 동기화
+    let lastSyncTime = 0;
+
+    // Supabase Realtime 구독 설정
+    async function setupRealtimeSubscription() {
+      if (!supabaseConnected) return;
+
+      try {
+        // 기존 구독 정리
+        if (realtimeSubscription) {
+          await supabase.removeChannel(realtimeSubscription);
+        }
+
+        // 모든 주요 테이블 변경 구독
+        realtimeSubscription = supabase
+          .channel('db-changes')
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'production_data' },
+            (payload) => handleRealtimeChange('production_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'availability_data' },
+            (payload) => handleRealtimeChange('availability_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'detail_data' },
+            (payload) => handleRealtimeChange('detail_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'ct_data' },
+            (payload) => handleRealtimeChange('ct_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'material_defect_data' },
+            (payload) => handleRealtimeChange('material_defect_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'wip_inventory_data' },
+            (payload) => handleRealtimeChange('wip_inventory_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'repair_status_data' },
+            (payload) => handleRealtimeChange('repair_status_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'packaging_status_data' },
+            (payload) => handleRealtimeChange('packaging_status_data', payload)
+          )
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'price_data' },
+            (payload) => handleRealtimeChange('price_data', payload)
+          )
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('🔴 실시간 동기화 활성화됨');
+            }
+          });
+
+        console.log('✅ Realtime 구독 설정 완료');
+      } catch (e) {
+        console.error('Realtime 구독 설정 실패:', e);
+      }
+    }
+
+    // Realtime 변경 감지 핸들러 (debounce 적용)
+    let realtimeDebounceTimer = null;
+    function handleRealtimeChange(tableName, payload) {
+      console.log(`🔔 ${tableName} 변경 감지:`, payload.eventType);
+
+      // 300ms 디바운스로 연속 변경 처리
+      clearTimeout(realtimeDebounceTimer);
+      realtimeDebounceTimer = setTimeout(async () => {
+        await refreshDataFromSupabase();
+      }, 300);
+    }
+
+    // Supabase에서 데이터 새로고침 (UI 업데이트 포함)
+    async function refreshDataFromSupabase() {
+      if (!supabaseConnected) return;
+
+      const now = Date.now();
+      // 최소 2초 간격으로 동기화 (과도한 요청 방지)
+      if (now - lastSyncTime < 2000) return;
+      lastSyncTime = now;
+
+      console.log('🔄 데이터 새로고침 시작...');
+      const syncStatus = document.getElementById('sync-status');
+      if (syncStatus) syncStatus.textContent = '동기화 중...';
+
+      try {
+        let dataChanged = false;
+
+        for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
+          const data = await loadFromSupabase(tableName);
+          if (data && data.length > 0) {
+            // 데이터가 변경되었는지 확인 (길이 비교)
+            if (!state[stateKey] || state[stateKey].length !== data.length) {
+              dataChanged = true;
+            }
+            state[stateKey] = data;
+
+            // localStorage에도 저장
+            updateLocalStorage(stateKey, data);
+          }
+        }
+
+        if (dataChanged) {
+          console.log('📊 데이터 변경 감지 - UI 업데이트');
+          render();
+          setTimeout(() => { createCharts(); initTableSort(); }, 100);
+
+          // 사용자에게 알림
+          showSyncNotification();
+        }
+
+        if (syncStatus) {
+          syncStatus.textContent = '동기화 완료 ✓';
+          setTimeout(() => { if (syncStatus) syncStatus.textContent = ''; }, 2000);
+        }
+      } catch (e) {
+        console.error('데이터 새로고침 실패:', e);
+        if (syncStatus) syncStatus.textContent = '동기화 실패';
+      }
+    }
+
+    // localStorage 업데이트 헬퍼
+    function updateLocalStorage(stateKey, data) {
+      try {
+        if (stateKey === 'rawData') {
+          saveToStorage(data);
+        } else if (stateKey === 'availabilityData') {
+          saveAvailabilityToStorage(data);
+        } else if (stateKey === 'detailData') {
+          saveDetailToStorage(data);
+        } else if (stateKey === 'ctData') {
+          localStorage.setItem(CT_DATA_KEY, JSON.stringify(data));
+        } else if (stateKey === 'materialDefectData') {
+          localStorage.setItem(MATERIAL_DEFECT_KEY, JSON.stringify(data));
+        } else if (stateKey === 'wipInventoryData') {
+          localStorage.setItem(WIP_INVENTORY_KEY, JSON.stringify(data));
+        } else if (stateKey === 'repairStatusData') {
+          localStorage.setItem(REPAIR_STATUS_KEY, JSON.stringify(data));
+        } else if (stateKey === 'packagingStatusData') {
+          localStorage.setItem(PACKAGING_STATUS_KEY, JSON.stringify(data));
+        } else if (stateKey === 'priceData') {
+          savePriceToStorage(data);
+        }
+      } catch (e) {
+        console.warn(`localStorage 저장 실패 (${stateKey}):`, e);
+      }
+    }
+
+    // 동기화 알림 표시
+    function showSyncNotification() {
+      const existing = document.getElementById('sync-notification');
+      if (existing) existing.remove();
+
+      const notification = document.createElement('div');
+      notification.id = 'sync-notification';
+      notification.className = 'fixed bottom-4 right-4 bg-emerald-600 text-white px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-pulse';
+      notification.innerHTML = `
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span>새로운 데이터가 동기화되었습니다</span>
+      `;
+      document.body.appendChild(notification);
+      setTimeout(() => notification.remove(), 3000);
+    }
+
+    // 주기적 동기화 시작 (폴백)
+    function startPeriodicSync() {
+      if (syncInterval) clearInterval(syncInterval);
+
+      syncInterval = setInterval(async () => {
+        if (supabaseConnected && document.visibilityState === 'visible') {
+          console.log('⏰ 주기적 동기화 실행');
+          await refreshDataFromSupabase();
+        }
+      }, SYNC_INTERVAL_MS);
+
+      console.log(`✅ 주기적 동기화 설정 (${SYNC_INTERVAL_MS/1000}초 간격)`);
+    }
+
+    // 페이지 포커스 시 동기화
+    function setupVisibilitySync() {
+      document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState === 'visible' && supabaseConnected) {
+          console.log('👁️ 페이지 포커스 - 데이터 동기화');
+          await refreshDataFromSupabase();
+        }
+      });
+
+      // 윈도우 포커스 시에도 동기화
+      window.addEventListener('focus', async () => {
+        if (supabaseConnected) {
+          console.log('🪟 윈도우 포커스 - 데이터 동기화');
+          await refreshDataFromSupabase();
+        }
+      });
+
+      console.log('✅ 포커스 동기화 설정 완료');
+    }
+
+    // 모든 실시간 동기화 초기화
+    async function initRealtimeSync() {
+      if (!supabaseConnected) return;
+
+      await setupRealtimeSubscription();
+      startPeriodicSync();
+      setupVisibilitySync();
+
+      console.log('🚀 실시간 동기화 시스템 초기화 완료');
+    }
+
+    // 정리 함수 (페이지 언로드 시)
+    function cleanupRealtimeSync() {
+      if (realtimeSubscription) {
+        supabase.removeChannel(realtimeSubscription);
+        realtimeSubscription = null;
+      }
+      if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+      }
+    }
+
+    // 페이지 언로드 시 정리
+    window.addEventListener('beforeunload', cleanupRealtimeSync);
+
     // 테이블명 매핑
     const TABLE_MAPPING = {
       rawData: 'production_data',
@@ -6340,6 +6575,9 @@
         if (loaded) {
           console.log('📊 Supabase에서 데이터 로드 완료');
         }
+
+        // 🔴 실시간 동기화 초기화 (다른 컴퓨터와 실시간 동기화)
+        await initRealtimeSync();
       }
 
       // 화면 렌더링
