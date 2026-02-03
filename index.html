@@ -7898,6 +7898,60 @@
       }
     }
 
+    // 🔍 데이터 진단 함수 (콘솔에서 debugProductionData() 실행)
+    window.debugProductionData = function() {
+      console.log('=== 📊 생산실적 데이터 진단 ===');
+      console.log('전체 rawData:', state.rawData.length + '건');
+
+      // 공정별 집계
+      const byProcess = {};
+      state.rawData.forEach(d => {
+        if (!byProcess[d.process]) byProcess[d.process] = { total: 0, byMonth: {} };
+        byProcess[d.process].total++;
+
+        // 월 추출
+        const dateStr = String(d.date);
+        let month = '?';
+        if (dateStr.includes('-')) {
+          month = parseInt(dateStr.split('-')[1]) || '?';
+        } else if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          month = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0]);
+        }
+        byProcess[d.process].byMonth[month] = (byProcess[d.process].byMonth[month] || 0) + 1;
+      });
+
+      console.log('\n공정별 월별 레코드 수:');
+      Object.keys(byProcess).forEach(proc => {
+        console.log(`  ${proc}: 총 ${byProcess[proc].total}건`, byProcess[proc].byMonth);
+      });
+
+      // 공정별 생산수량 합계
+      console.log('\n공정별 생산수량 합계 (2월만):');
+      const sumByProcess = {};
+      state.rawData.forEach(d => {
+        const dateStr = String(d.date);
+        let month = null;
+        if (dateStr.includes('-')) {
+          month = parseInt(dateStr.split('-')[1]) || null;
+        } else if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          month = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0]);
+        }
+        if (month === 2) {
+          sumByProcess[d.process] = (sumByProcess[d.process] || 0) + (d.productionQty || 0);
+        }
+      });
+      console.log(sumByProcess);
+
+      // 조립 데이터 샘플
+      const assemblyData = state.rawData.filter(d => d.process === '조립');
+      console.log('\n조립 데이터 샘플 (처음 5건):');
+      assemblyData.slice(0, 5).forEach(d => console.log('  ', d.date, d.productionQty));
+
+      return sumByProcess;
+    };
+
     // 초기화
     async function initApp() {
       // 기존 localStorage의 Supabase 세션 정리 (sessionStorage로 전환했으므로)
