@@ -267,21 +267,65 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     return result.slice(0, 50)
   }, [processData, uphSort])
 
+  // CT 데이터에서 유연하게 값 찾기 (부분 문자열 매칭)
+  const findCTValue = (row: Record<string, unknown>, ...patterns: string[]): number => {
+    // 먼저 정확한 키 매칭
+    for (const pattern of patterns) {
+      if (row[pattern] !== undefined && row[pattern] !== null && row[pattern] !== '') {
+        return parseNumber(row[pattern] as string | number)
+      }
+    }
+    // 부분 문자열 매칭 (특수문자 제거 후 비교)
+    const keys = Object.keys(row)
+    for (const pattern of patterns) {
+      const lowerPattern = pattern.toLowerCase().replace(/[\/\(\)\s]/g, '')
+      for (const key of keys) {
+        const lowerKey = key.toLowerCase().replace(/[\/\(\)\s]/g, '')
+        if (lowerKey.includes(lowerPattern) || lowerPattern.includes(lowerKey)) {
+          const val = parseNumber(row[key] as string | number)
+          if (val > 0) return val
+        }
+      }
+    }
+    return 0
+  }
+
   // CT 데이터 분석
   const ctAnalysis = useMemo(() => {
+    // 디버깅: CT 데이터 컬럼 확인
+    if (data.ctData.length > 0) {
+      console.log('🔧 CT 데이터 샘플 키:', Object.keys(data.ctData[0]))
+      console.log('🔧 CT 데이터 샘플:', data.ctData[0])
+    }
+
     const processCT = data.ctData.filter(row =>
       row.공정 === processName || row.process === processName
     )
 
-    let result = processCT.map(row => ({
-      equipment: row['설비(라인)명'] || row.equipment || row.설비명 || '기타',
-      product: row.품목명 || row.product || '',
-      standardCT: parseNumber(row['표준C/T'] || row.standardCT || row['표준CT'] || 0),
-      actualCT: parseNumber(row['실제C/T'] || row.actualCT || row['실제CT'] || 0),
-      efficiency: parseNumber(row['표준C/T'] || row.standardCT || 0) > 0
-        ? (parseNumber(row['표준C/T'] || row.standardCT || 0) / parseNumber(row['실제C/T'] || row.actualCT || 1) * 100)
-        : 0
-    }))
+    let result = processCT.map(row => {
+      const standardCT = findCTValue(row, '표준C/T', '표준CT', 'standardCT', '표준사이클', '표준')
+      const actualCT = findCTValue(row, '실제C/T', '실제CT', 'actualCT', '실제사이클', '실제')
+
+      // 설비명 찾기 (유연하게)
+      const equipment = String(
+        row['설비(라인)명'] || row['설비/LINE'] || row['설비/Line'] ||
+        row.LINE || row.Line || row.설비명 || row.equipment ||
+        row['라인명'] || row['설비'] || '기타'
+      )
+
+      // 품목명 찾기
+      const product = String(row.품목명 || row.품목코드 || row.product || row['품목'] || '')
+
+      return {
+        equipment,
+        product,
+        standardCT,
+        actualCT,
+        efficiency: standardCT > 0 && actualCT > 0
+          ? (standardCT / actualCT * 100)
+          : 0
+      }
+    })
 
     // 정렬
     if (ctSort) {
