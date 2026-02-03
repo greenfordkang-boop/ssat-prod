@@ -696,7 +696,11 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                       <td className="px-4 py-3 max-w-xs truncate">{row.product}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{row.standardCT.toFixed(1)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{row.actualCT.toFixed(1)}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td
+                        className="px-4 py-3 text-right cursor-pointer hover:bg-blue-50"
+                        onClick={() => openCtModal(row.equipment)}
+                        title="클릭하여 상세 내역 보기"
+                      >
                         <span className={`px-2 py-1 rounded text-xs font-semibold ${
                           row.efficiency >= 100 ? 'bg-green-100 text-green-700' :
                           row.efficiency >= 80 ? 'bg-yellow-100 text-yellow-700' :
@@ -951,6 +955,97 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                 </button>
                 <button
                   onClick={() => setDefectModalOpen(false)}
+                  className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CT 상세 팝업 */}
+      {ctModalOpen && selectedCtEquipment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setCtModalOpen(false)}>
+          <div
+            className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                📊 CT 상세 내역 - {selectedCtEquipment}
+                <span className="text-sm font-normal text-slate-500">({ctDetails.length}건)</span>
+              </h3>
+              <button
+                onClick={() => setCtModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="overflow-auto flex-1">
+              {ctDetails.length === 0 ? (
+                <p className="text-slate-500 text-center py-8">CT 데이터가 없습니다.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-100 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600">품목</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-600">표준CT</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-600">실제CT</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-600">CT효율</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ctDetails.map((row, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                        <td className="px-3 py-2">{row.품목명}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.표준CT.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.실제CT.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                            row.CT효율 >= 100 ? 'bg-green-100 text-green-700' :
+                            row.CT효율 >= 80 ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {row.CT효율.toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between">
+              <span className="text-sm text-slate-600">
+                평균 CT효율: <span className="font-bold text-blue-600">
+                  {ctDetails.length > 0
+                    ? (ctDetails.reduce((sum, r) => sum + r.CT효율, 0) / ctDetails.length).toFixed(1)
+                    : 0}%
+                </span>
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    downloadExcel(ctDetails.map(r => ({
+                      설비: selectedCtEquipment,
+                      생산일자: r.생산일자,
+                      품목명: r.품목명,
+                      표준CT: r.표준CT,
+                      실제CT: r.실제CT,
+                      'CT효율(%)': r.CT효율
+                    })), `${processName}_${selectedCtEquipment}_CT상세`)
+                  }}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium flex items-center gap-2"
+                >
+                  📥 엑셀 다운로드
+                </button>
+                <button
+                  onClick={() => setCtModalOpen(false)}
                   className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium"
                 >
                   닫기
