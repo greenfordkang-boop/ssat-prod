@@ -267,26 +267,43 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     return result.slice(0, 50)
   }, [processData, uphSort])
 
-  // CT 데이터에서 유연하게 값 찾기 (부분 문자열 매칭)
-  const findCTValue = (row: Record<string, unknown>, ...patterns: string[]): number => {
-    // 먼저 정확한 키 매칭
-    for (const pattern of patterns) {
-      if (row[pattern] !== undefined && row[pattern] !== null && row[pattern] !== '') {
-        return parseNumber(row[pattern] as string | number)
-      }
-    }
-    // 부분 문자열 매칭 (특수문자 제거 후 비교)
+  // CT 데이터에서 유연하게 값 찾기 (표준/실제 구분 명확히)
+  const findCTValue = (row: Record<string, unknown>, type: 'standard' | 'actual'): number => {
     const keys = Object.keys(row)
-    for (const pattern of patterns) {
-      const lowerPattern = pattern.toLowerCase().replace(/[\/\(\)\s]/g, '')
-      for (const key of keys) {
-        const lowerKey = key.toLowerCase().replace(/[\/\(\)\s]/g, '')
-        if (lowerKey.includes(lowerPattern) || lowerPattern.includes(lowerKey)) {
-          const val = parseNumber(row[key] as string | number)
-          if (val > 0) return val
-        }
+
+    // 타입별 키워드 정의
+    const standardKeywords = ['표준', 'standard', 'std', '기준']
+    const actualKeywords = ['실제', 'actual', '측정', '현재']
+    const ctKeywords = ['c/t', 'ct', '사이클', 'cycle', 'time']
+
+    const targetKeywords = type === 'standard' ? standardKeywords : actualKeywords
+    const excludeKeywords = type === 'standard' ? actualKeywords : standardKeywords
+
+    // 1단계: 타입 키워드 + CT 키워드 모두 포함하는 컬럼 찾기
+    for (const key of keys) {
+      const lowerKey = key.toLowerCase()
+      const hasTarget = targetKeywords.some(kw => lowerKey.includes(kw))
+      const hasCT = ctKeywords.some(kw => lowerKey.includes(kw))
+      const hasExclude = excludeKeywords.some(kw => lowerKey.includes(kw))
+
+      if (hasTarget && hasCT && !hasExclude) {
+        const val = parseNumber(row[key] as string | number)
+        if (val > 0) return val
       }
     }
+
+    // 2단계: 타입 키워드만 포함하는 컬럼 (CT 없어도)
+    for (const key of keys) {
+      const lowerKey = key.toLowerCase()
+      const hasTarget = targetKeywords.some(kw => lowerKey.includes(kw))
+      const hasExclude = excludeKeywords.some(kw => lowerKey.includes(kw))
+
+      if (hasTarget && !hasExclude) {
+        const val = parseNumber(row[key] as string | number)
+        if (val > 0) return val
+      }
+    }
+
     return 0
   }
 
@@ -295,7 +312,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     // 디버깅: CT 데이터 컬럼 확인
     if (data.ctData.length > 0) {
       console.log('🔧 CT 데이터 샘플 키:', Object.keys(data.ctData[0]))
-      console.log('🔧 CT 데이터 샘플:', data.ctData[0])
+      console.log('🔧 CT 데이터 샘플 값:', data.ctData[0])
     }
 
     const processCT = data.ctData.filter(row =>
@@ -303,8 +320,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     )
 
     let result = processCT.map(row => {
-      const standardCT = findCTValue(row, '표준C/T', '표준CT', 'standardCT', '표준사이클', '표준')
-      const actualCT = findCTValue(row, '실제C/T', '실제CT', 'actualCT', '실제사이클', '실제')
+      const standardCT = findCTValue(row, 'standard')
+      const actualCT = findCTValue(row, 'actual')
 
       // 설비명 찾기 (유연하게)
       const equipment = String(
