@@ -753,11 +753,11 @@
       return result;
     }
 
-    // Supabase에서 데이터 로드
+    // Supabase에서 데이터 로드 (최대 10,000건)
     async function loadFromSupabase(tableName) {
       if (!supabaseConnected) return null;
       try {
-        const { data, error } = await supabase.from(tableName).select('*');
+        const { data, error } = await supabase.from(tableName).select('*').limit(10000);
         if (error) throw error;
         return data.map(toCamelCase);
       } catch (e) {
