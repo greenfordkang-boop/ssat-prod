@@ -29,6 +29,13 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     let defect = 0
     let workTime = 0
 
+    // 디버깅: 첫 번째 행 구조 확인
+    if (processData.length > 0) {
+      console.log('📊 데이터 샘플:', processData[0])
+      console.log('📊 데이터 키:', Object.keys(processData[0]))
+      console.log('📊 불량수량 값:', processData[0].불량수량, processData[0]['불량수량'])
+    }
+
     processData.forEach(row => {
       production += parseNumber(row.생산수량)
       good += parseNumber(row.양품수량)
