@@ -1069,9 +1069,14 @@
         const { data, error } = await supabaseClient.from(tableName).select('*').limit(10000);
         if (error) throw error;
 
-        // JSONB 테이블은 data 컬럼에서 추출
+        // JSONB 테이블은 data 컬럼에서 추출 (없으면 일반 처리)
         if (JSONB_TABLES.includes(tableName)) {
-          return data.map(row => row.data);
+          // data 컬럼이 있는지 확인 (기존 데이터 호환)
+          if (data.length > 0 && data[0].data !== undefined) {
+            return data.map(row => row.data).filter(Boolean);
+          }
+          // data 컬럼이 없으면 일반 처리 (기존 테이블 구조)
+          return data.map(toCamelCase);
         }
         return data.map(toCamelCase);
       } catch (e) {
