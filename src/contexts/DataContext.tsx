@@ -18,6 +18,9 @@ import {
 } from '@/types'
 import { useAuth } from './AuthContext'
 
+// 업로드 시간 타입
+type UploadTimes = Record<string, string>
+
 interface DataContextType {
   data: DashboardData
   loading: boolean
@@ -25,6 +28,7 @@ interface DataContextType {
   selectedMonth: number
   filters: FilterState
   pivot: PivotConfig
+  uploadTimes: UploadTimes
   setSelectedMonth: (month: number) => void
   setFilters: (filters: FilterState) => void
   setPivot: (pivot: PivotConfig) => void
@@ -32,6 +36,7 @@ interface DataContextType {
   refreshData: () => Promise<void>
   clearData: (type?: keyof typeof TABLE_MAPPING) => Promise<void>
   getFilteredData: () => ProductionData[]
+  updateUploadTime: (key: string) => void
 }
 
 const initialData: DashboardData = {
@@ -56,6 +61,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [filters, setFilters] = useState<FilterState>({ process: 'all', equipment: 'all', product: 'all' })
   const [pivot, setPivot] = useState<PivotConfig>({ rows: ['공정'], cols: ['품종'], values: '생산수량', aggFunc: 'sum' })
+  const [uploadTimes, setUploadTimes] = useState<UploadTimes>({})
 
   // 중복 로딩 방지를 위한 ref
   const isLoadingRef = useRef(false)
@@ -142,6 +148,47 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.error(`❌ 로드 실패 (${tableName}):`, e)
       return []
     }
+  }
+
+  // 테이블별 마지막 업로드 시간 로드
+  const loadUploadTimes = async (): Promise<UploadTimes> => {
+    const times: UploadTimes = {}
+    try {
+      for (const [key, tableName] of Object.entries(TABLE_MAPPING)) {
+        const { data: result } = await supabase
+          .from(tableName)
+          .select('created_at')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (result?.created_at) {
+          const date = new Date(result.created_at)
+          times[key] = date.toLocaleString('ko-KR', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        }
+      }
+      console.log('📅 업로드 시간 로드 완료:', times)
+    } catch (e) {
+      console.error('업로드 시간 로드 실패:', e)
+    }
+    return times
+  }
+
+  // 업로드 시간 업데이트
+  const updateUploadTime = (key: string) => {
+    const now = new Date()
+    const timeStr = now.toLocaleString('ko-KR', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    setUploadTimes(prev => ({ ...prev, [key]: timeStr }))
   }
 
   // Supabase에 데이터 저장 (완전 교체)
@@ -417,6 +464,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setData(prev => ({ ...prev, ...results }))
         hasLoadedRef.current = true
 
+        // 업로드 시간 로드
+        const times = await loadUploadTimes()
+        setUploadTimes(times)
+
         // 로드 결과 요약
         console.log('📊 ========== 초기 로드 결과 요약 ==========')
         for (const [key, value] of Object.entries(results)) {
@@ -453,13 +504,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       selectedMonth,
       filters,
       pivot,
+      uploadTimes,
       setSelectedMonth,
       setFilters,
       setPivot,
       uploadData,
       refreshData,
       clearData,
-      getFilteredData
+      getFilteredData,
+      updateUploadTime
     }}>
       {children}
     </DataContext.Provider>
