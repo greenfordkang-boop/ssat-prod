@@ -48,22 +48,50 @@ const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
 // 차트 색상
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1']
 
-// 단가 매칭 헬퍼 함수
+// 단가 데이터에서 매칭하는 헬퍼 함수
+const findPriceData = (
+  priceData: { [key: string]: string | number | undefined }[],
+  itemCode?: string,
+  itemName?: string,
+  customerPN?: string
+) => {
+  return priceData.find(p => {
+    // 품목코드 매칭 (다양한 필드명 지원)
+    const priceItemCode = p.품목코드 || p.품번 || p.품목번호 || p.itemCode || p.item_code || p.code || p.ITEM_CODE || p.PART_NO
+    if (itemCode && priceItemCode && String(priceItemCode).trim() === String(itemCode).trim()) {
+      return true
+    }
+    // 고객사 P/N 매칭
+    const priceCustPN = p['고객사 P/N'] || p['고객P/N'] || p.customerPN || p.customer_pn || p.CUST_PN
+    if (customerPN && priceCustPN && String(priceCustPN).trim() === String(customerPN).trim()) {
+      return true
+    }
+    // 품목명 매칭 (다양한 필드명 지원)
+    const priceItemName = p.품목명 || p.품명 || p.productName || p.product_name || p.name || p.ITEM_NAME || p.PRODUCT
+    if (itemName && priceItemName && String(priceItemName).trim() === String(itemName).trim()) {
+      return true
+    }
+    return false
+  })
+}
+
+// 단가 값 추출 헬퍼 함수
+const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
+  const priceVal = priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice ||
+                   priceItem.unit_price || priceItem.PRICE || priceItem.UNIT_PRICE || 0
+  return parseNumber(priceVal)
+}
+
+// 단가 매칭 통합 함수
 const findPrice = (
   priceData: { [key: string]: string | number | undefined }[],
   itemCode?: string,
-  itemName?: string
+  itemName?: string,
+  customerPN?: string
 ): number => {
-  const found = priceData.find(p => {
-    const pCode = p.품목코드 || p.품번 || p.품목번호 || p.itemCode || p.code
-    if (itemCode && pCode && String(pCode) === String(itemCode)) return true
-    const pName = p.품목명 || p.품명 || p.productName || p.name
-    if (itemName && pName && String(pName) === String(itemName)) return true
-    return false
-  })
+  const found = findPriceData(priceData, itemCode, itemName, customerPN)
   if (!found) return 0
-  const priceVal = found.단가 || found.가격 || found.price || found.unitPrice || 0
-  return parseNumber(priceVal)
+  return getPriceValue(found)
 }
 
 export default function WipDashboard({ subTab }: WipDashboardProps) {
@@ -89,10 +117,12 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
   // 요약 통계
   const stats = useMemo(() => {
     const inventory = data.wipInventoryData
-    if (inventory.length === 0) return { totalQty: 0, totalAmount: 0, warehouseCount: 0, itemCount: 0 }
+    if (inventory.length === 0) return { totalQty: 0, totalAmount: 0, warehouseCount: 0, itemCount: 0, matchedCount: 0, unmatchedCount: 0 }
 
     let totalQty = 0
     let totalAmount = 0
+    let matchedCount = 0
+    let unmatchedCount = 0
     const warehouses = new Set<string>()
     const items = new Set<string>()
 
@@ -111,15 +141,24 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
 
       // 재고금액 (단가표 매칭)
       const itemName = String(getFieldValue(row, '품목명', 'itemName', 'name') || '')
-      const price = findPrice(data.priceData, itemCode, itemName)
-      totalAmount += qty * price
+      const customerPN = String(getFieldValue(row, '고객사 P/N', '고객P/N', 'customerPN') || '')
+      const price = findPrice(data.priceData, itemCode, itemName, customerPN)
+
+      if (price > 0) {
+        matchedCount++
+        totalAmount += qty * price
+      } else {
+        unmatchedCount++
+      }
     })
 
     return {
       totalQty,
       totalAmount,
       warehouseCount: warehouses.size,
-      itemCount: items.size
+      itemCount: items.size,
+      matchedCount,
+      unmatchedCount
     }
   }, [data.wipInventoryData, data.priceData])
 
@@ -143,7 +182,8 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
       // 재고금액
       const itemCode = String(getFieldValue(row, '품목코드', 'itemCode', 'code') || '')
       const itemName = String(getFieldValue(row, '품목명', 'itemName', 'name') || '')
-      const price = findPrice(data.priceData, itemCode, itemName)
+      const customerPN = String(getFieldValue(row, '고객사 P/N', '고객P/N', 'customerPN') || '')
+      const price = findPrice(data.priceData, itemCode, itemName, customerPN)
       statsMap[warehouse].amount += qty * price
     })
 
@@ -305,7 +345,9 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
             <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
               <div className="text-sm text-slate-500 mb-1">총 재고금액</div>
               <div className="text-3xl font-bold text-emerald-600">{formatNumber(Math.round(stats.totalAmount))}</div>
-              <div className="text-xs text-slate-400 mt-2">원 (단가표 매칭)</div>
+              <div className="text-xs text-slate-400 mt-2">
+                원 (매칭: {stats.matchedCount}건 / 미매칭: {stats.unmatchedCount}건)
+              </div>
             </div>
 
             <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
