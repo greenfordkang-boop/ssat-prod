@@ -114,6 +114,14 @@ const findPrice = (
   return getPriceValue(found)
 }
 
+// 품목 상세 팝업용 타입
+interface ItemDetailPopup {
+  itemCode: string
+  itemName: string
+  warehouses: { name: string; qty: number }[]
+  totalQty: number
+}
+
 export default function WipDashboard({ subTab }: WipDashboardProps) {
   const { data, selectedMonth } = useData()
   const [showTable, setShowTable] = useState(true)
@@ -122,6 +130,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
   const [priceFilter, setPriceFilter] = useState('')
   const [sortConfig, setSortConfig] = useState<SortConfig>(null)
   const [priceSort, setPriceSort] = useState<SortConfig>(null)
+  const [selectedItem, setSelectedItem] = useState<ItemDetailPopup | null>(null)
   const [warehouseFilter, setWarehouseFilter] = useState('all')
 
   // 재고 데이터에서 필드명 추출
@@ -392,6 +401,32 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     }
   }
 
+  // 품목 클릭 시 창고별 재고 현황 팝업
+  const handleItemClick = (row: Record<string, unknown>) => {
+    const itemCode = String(getFieldValue(row, '품목코드', 'itemCode', 'code') || '')
+    const itemName = String(getFieldValue(row, '품목명', 'itemName', 'name') || '')
+
+    // 해당 품목의 창고별 재고 계산
+    const warehouseMap: Record<string, number> = {}
+    let totalQty = 0
+
+    data.wipInventoryData.forEach(item => {
+      const code = String(getFieldValue(item, '품목코드', 'itemCode', 'code') || '')
+      if (code === itemCode) {
+        const warehouse = String(getFieldValue(item, '창고명', '창고', 'warehouse') || '기타')
+        const qty = parseNumber(getFieldValue(item, '재고', '재고수량', 'quantity', 'qty'))
+        warehouseMap[warehouse] = (warehouseMap[warehouse] || 0) + qty
+        totalQty += qty
+      }
+    })
+
+    const warehouses = Object.entries(warehouseMap)
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => b.qty - a.qty)
+
+    setSelectedItem({ itemCode, itemName, warehouses, totalQty })
+  }
+
   const handlePriceSort = (key: string) => {
     if (priceSort?.key === key) {
       setPriceSort(priceSort.direction === 'asc' ? { key, direction: 'desc' } : null)
@@ -586,7 +621,11 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                   </thead>
                   <tbody>
                     {filteredInventory.map((row, idx) => (
-                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                      <tr
+                        key={idx}
+                        className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50 transition-colors`}
+                        onClick={() => handleItemClick(row)}
+                      >
                         {columns.map((key, colIdx) => (
                           <td key={colIdx} className="px-4 py-3 whitespace-nowrap">
                             {typeof row[key as keyof typeof row] === 'number'
@@ -688,6 +727,68 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 품목 상세 팝업 모달 */}
+      {selectedItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedItem(null)}>
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">품목별 창고 재고 현황</h3>
+              <button
+                onClick={() => setSelectedItem(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <div className="text-sm text-gray-500">품목코드</div>
+              <div className="font-semibold text-blue-700">{selectedItem.itemCode}</div>
+              {selectedItem.itemName && (
+                <>
+                  <div className="text-sm text-gray-500 mt-2">품목명</div>
+                  <div className="font-medium text-gray-800">{selectedItem.itemName}</div>
+                </>
+              )}
+            </div>
+
+            <div className="overflow-x-auto max-h-64">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0">
+                  <tr className="bg-slate-100">
+                    <th className="px-4 py-2 text-left font-semibold text-slate-600">창고명</th>
+                    <th className="px-4 py-2 text-right font-semibold text-slate-600">재고수량</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedItem.warehouses.map((wh, idx) => (
+                    <tr key={wh.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="px-4 py-2">{wh.name}</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-medium">{formatNumber(wh.qty)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-blue-100 font-bold">
+                    <td className="px-4 py-2">합계</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-blue-700">{formatNumber(selectedItem.totalQty)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setSelectedItem(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
