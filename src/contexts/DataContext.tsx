@@ -121,7 +121,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
             // 빈 키 건너뛰기
             if (!key || key.trim() === '') continue
 
-            const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase()
+            // snake_case 변환 (첫 글자 대문자일 때 앞에 _ 붙는 문제 수정)
+            let snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase()
+            // 앞의 언더스코어 제거 (예: Cavity → _cavity → cavity)
+            if (snakeKey.startsWith('_')) {
+              snakeKey = snakeKey.substring(1)
+            }
             // 빈 snake_key도 건너뛰기
             if (!snakeKey || snakeKey.trim() === '' || snakeKey === '_') continue
 
