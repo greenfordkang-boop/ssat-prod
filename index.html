@@ -894,6 +894,25 @@
           if (data && data.length > 0) {
             state[stateKey] = data;
             console.log(`📥 ${tableName}: ${data.length}건 로드`);
+
+            // localStorage에도 저장 (다른 컴퓨터 동기화)
+            if (stateKey === 'rawData') {
+              saveToStorage(data);
+            } else if (stateKey === 'availabilityData') {
+              saveAvailabilityToStorage(data);
+            } else if (stateKey === 'detailData') {
+              saveDetailToStorage(data);
+            } else if (stateKey === 'ctData') {
+              try { localStorage.setItem(CT_DATA_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'materialDefectData') {
+              try { localStorage.setItem(MATERIAL_DEFECT_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'wipInventoryData') {
+              try { localStorage.setItem(WIP_INVENTORY_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'repairStatusData') {
+              try { localStorage.setItem(REPAIR_STATUS_KEY, JSON.stringify(data)); } catch(e) {}
+            } else if (stateKey === 'packagingStatusData') {
+              try { localStorage.setItem(PACKAGING_STATUS_KEY, JSON.stringify(data)); } catch(e) {}
+            }
           }
         }
         return true;
