@@ -114,9 +114,18 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     return ''
   }
 
-  // 요약 통계
+  // 요약 통계 (창고 필터 적용)
   const stats = useMemo(() => {
-    const inventory = data.wipInventoryData
+    let inventory = data.wipInventoryData
+
+    // 창고 필터 적용
+    if (warehouseFilter !== 'all') {
+      inventory = inventory.filter(row => {
+        const warehouse = String(getFieldValue(row, '창고명', '창고', 'warehouse') || '')
+        return warehouse === warehouseFilter
+      })
+    }
+
     if (inventory.length === 0) return { totalQty: 0, totalAmount: 0, warehouseCount: 0, itemCount: 0, matchedCount: 0, unmatchedCount: 0 }
 
     let totalQty = 0
@@ -160,11 +169,20 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
       matchedCount,
       unmatchedCount
     }
-  }, [data.wipInventoryData, data.priceData])
+  }, [data.wipInventoryData, data.priceData, warehouseFilter])
 
-  // 창고별 재고 현황
+  // 창고별 재고 현황 (창고 필터 적용)
   const warehouseStats = useMemo(() => {
-    const inventory = data.wipInventoryData
+    let inventory = data.wipInventoryData
+
+    // 창고 필터 적용
+    if (warehouseFilter !== 'all') {
+      inventory = inventory.filter(row => {
+        const warehouse = String(getFieldValue(row, '창고명', '창고', 'warehouse') || '')
+        return warehouse === warehouseFilter
+      })
+    }
+
     const statsMap: Record<string, { qty: number; amount: number; items: number }> = {}
 
     inventory.forEach(row => {
@@ -190,11 +208,20 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     return Object.entries(statsMap)
       .map(([name, values]) => ({ name, ...values }))
       .sort((a, b) => b.qty - a.qty)
-  }, [data.wipInventoryData, data.priceData])
+  }, [data.wipInventoryData, data.priceData, warehouseFilter])
 
-  // 품목유형별 재고 현황
+  // 품목유형별 재고 현황 (창고 필터 적용)
   const typeStats = useMemo(() => {
-    const inventory = data.wipInventoryData
+    let inventory = data.wipInventoryData
+
+    // 창고 필터 적용
+    if (warehouseFilter !== 'all') {
+      inventory = inventory.filter(row => {
+        const warehouse = String(getFieldValue(row, '창고명', '창고', 'warehouse') || '')
+        return warehouse === warehouseFilter
+      })
+    }
+
     const statsMap: Record<string, number> = {}
 
     inventory.forEach(row => {
@@ -206,7 +233,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     return Object.entries(statsMap)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-  }, [data.wipInventoryData])
+  }, [data.wipInventoryData, warehouseFilter])
 
   // 창고 목록
   const warehouses = useMemo(() => {
@@ -251,7 +278,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
       })
     }
 
-    return result.slice(0, 200)
+    return result // 전체 데이터 반환 (제한 없음)
   }, [data.wipInventoryData, warehouseFilter, filter, sortConfig])
 
   // 단가표 필터링
