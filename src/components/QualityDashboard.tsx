@@ -13,7 +13,8 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Legend,
-  Line
+  Line,
+  LabelList
 } from 'recharts'
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' } | null
@@ -400,10 +401,10 @@ export default function QualityDashboard() {
           공정별 품질 지표
         </h3>
         {processQuality.length > 0 ? (
-          <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={processQuality}>
+          <ResponsiveContainer width="100%" height={350}>
+            <ComposedChart data={processQuality} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis yAxisId="left" tickFormatter={(v) => formatNumber(v)} />
               <YAxis yAxisId="right" orientation="right" domain={[80, 100]} tickFormatter={(v) => `${v}%`} />
               <Tooltip
@@ -413,9 +414,15 @@ export default function QualityDashboard() {
                 }}
               />
               <Legend />
-              <Bar yAxisId="left" dataKey="불량" fill="#fca5a5" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="left" dataKey="폐기" fill="#fbcfe8" radius={[4, 4, 0, 0]} />
-              <Line yAxisId="right" type="monotone" dataKey="수율(%)" stroke="#93c5fd" strokeWidth={2} dot={{ r: 4 }} />
+              <Bar yAxisId="left" dataKey="불량" fill="#fca5a5" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="불량" position="top" fill="#b91c1c" fontSize={9} formatter={(v) => formatNumber(Number(v))} />
+              </Bar>
+              <Bar yAxisId="left" dataKey="폐기" fill="#fbcfe8" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="폐기" position="top" fill="#9d174d" fontSize={9} formatter={(v) => Number(v) > 0 ? formatNumber(Number(v)) : ''} />
+              </Bar>
+              <Line yAxisId="right" type="monotone" dataKey="수율(%)" stroke="#3b82f6" strokeWidth={3} dot={{ r: 5, fill: '#3b82f6' }}>
+                <LabelList dataKey="수율(%)" position="top" fill="#1d4ed8" fontSize={10} fontWeight="bold" formatter={(v) => `${Number(v).toFixed(1)}%`} />
+              </Line>
             </ComposedChart>
           </ResponsiveContainer>
         ) : (

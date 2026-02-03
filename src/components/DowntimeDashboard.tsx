@@ -203,15 +203,20 @@ export default function DowntimeDashboard() {
     })
 
     return Array.from(equipMap.entries())
+      .filter(([name]) => {
+        // TOTAL, 합계, 총계 등 제외
+        const lowerName = name.toLowerCase()
+        return !lowerName.includes('total') && !name.includes('합계') && !name.includes('총계') && !name.includes('전체')
+      })
       .map(([name, data]) => ({
-        name: name.length > 15 ? name.slice(0, 15) + '...' : name,
+        name: name.length > 12 ? name.slice(0, 12) + '...' : name,
         fullName: name,
         가동시간: Math.round(data.total - data.downtime),
         비가동시간: Math.round(data.downtime),
         비가동율: data.total > 0 ? Math.round((data.downtime / data.total) * 1000) / 10 : 0
       }))
       .sort((a, b) => b.비가동시간 - a.비가동시간) // 비가동시간 큰 순으로 정렬
-      .slice(0, 12)
+      .slice(0, 15)
   }, [filteredData])
 
   // 총 비가동시간 계산
@@ -292,18 +297,18 @@ export default function DowntimeDashboard() {
             비가동 사유별 분포
           </h3>
           {downtimeByReason.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
                   data={downtimeByReason.slice(0, 8)}
                   cx="50%"
                   cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
+                  innerRadius={50}
+                  outerRadius={90}
                   paddingAngle={2}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
-                  labelLine={true}
+                  label={({ name, value, percent }) => `${name} ${formatNumber(value as number)}분 (${((percent || 0) * 100).toFixed(1)}%)`}
+                  labelLine={{ stroke: '#666', strokeWidth: 1 }}
                 >
                   {downtimeByReason.slice(0, 8).map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

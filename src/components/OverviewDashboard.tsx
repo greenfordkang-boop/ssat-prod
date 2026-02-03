@@ -12,7 +12,8 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Line,
-  Legend
+  Legend,
+  LabelList
 } from 'recharts'
 import { formatNumber, parseNumber, CHART_COLORS, EXCLUDED_PROCESSES } from '@/lib/utils'
 
@@ -397,18 +398,26 @@ export default function OverviewDashboard() {
           <span className="w-1 h-5 bg-blue-500 rounded-full" />
           월별 종합효율 (OEE) 추이
         </h3>
-        <ResponsiveContainer width="100%" height={350}>
-          <ComposedChart data={monthlyOEE}>
+        <ResponsiveContainer width="100%" height={380}>
+          <ComposedChart data={monthlyOEE} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-            <YAxis yAxisId="left" domain={[0, 100]} tickFormatter={(v) => `${v.toFixed(1)}%`} />
-            <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v.toFixed(1)}%`} />
+            <YAxis yAxisId="left" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+            <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
             <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, '']} />
             <Legend />
-            <Bar yAxisId="left" dataKey="시간가동율" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
-            <Bar yAxisId="left" dataKey="성능가동율" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
-            <Bar yAxisId="left" dataKey="양품율" fill="#bfdbfe" radius={[4, 4, 0, 0]} />
-            <Line yAxisId="right" type="monotone" dataKey="OEE (%)" stroke="#f87171" strokeWidth={2} dot={{ r: 4, fill: '#f87171' }} />
+            <Bar yAxisId="left" dataKey="시간가동율" fill="#e2e8f0" radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="시간가동율" position="inside" fill="#64748b" fontSize={9} formatter={(v) => `${Number(v).toFixed(1)}%`} />
+            </Bar>
+            <Bar yAxisId="left" dataKey="성능가동율" fill="#cbd5e1" radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="성능가동율" position="inside" fill="#475569" fontSize={9} formatter={(v) => `${Number(v).toFixed(1)}%`} />
+            </Bar>
+            <Bar yAxisId="left" dataKey="양품율" fill="#bfdbfe" radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="양품율" position="inside" fill="#1e40af" fontSize={9} formatter={(v) => `${Number(v).toFixed(1)}%`} />
+            </Bar>
+            <Line yAxisId="right" type="monotone" dataKey="OEE (%)" stroke="#f87171" strokeWidth={3} dot={{ r: 5, fill: '#f87171' }}>
+              <LabelList dataKey="OEE (%)" position="top" fill="#dc2626" fontSize={10} fontWeight="bold" formatter={(v) => `${Number(v).toFixed(1)}%`} />
+            </Line>
           </ComposedChart>
         </ResponsiveContainer>
       </div>

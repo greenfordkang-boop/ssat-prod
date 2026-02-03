@@ -14,7 +14,8 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend
+  Legend,
+  LabelList
 } from 'recharts'
 
 interface WipDashboardProps {
@@ -755,13 +756,15 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
               {/* 창고별 재고수량 */}
               <div className="bg-white rounded-xl p-6 border border-gray-100">
                 <h3 className="text-base font-semibold mb-4">창고별 재고수량</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={warehouseStats.slice(0, 8)} layout="vertical">
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={warehouseStats.slice(0, 8)} layout="vertical" margin={{ right: 80 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis type="number" tickFormatter={formatNumber} />
                     <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v) => formatNumber(v as number)} />
-                    <Bar dataKey="qty" fill="#3B82F6" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="qty" fill="#3B82F6" radius={[0, 4, 4, 0]}>
+                      <LabelList dataKey="qty" position="right" fill="#1d4ed8" fontSize={10} fontWeight="bold" formatter={(v) => formatNumber(Number(v))} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -769,7 +772,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
               {/* 품목유형별 재고 */}
               <div className="bg-white rounded-xl p-6 border border-gray-100">
                 <h3 className="text-base font-semibold mb-4">품목유형별 재고</h3>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={320}>
                   <PieChart>
                     <Pie
                       data={typeStats.slice(0, 8)}
@@ -777,8 +780,8 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      outerRadius={100}
-                      label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                      outerRadius={90}
+                      label={({ name, value, percent }) => `${name} ${formatNumber(value as number)} (${((percent || 0) * 100).toFixed(1)}%)`}
                       labelLine={{ stroke: '#999', strokeWidth: 1 }}
                     >
                       {typeStats.slice(0, 8).map((_, idx) => (
