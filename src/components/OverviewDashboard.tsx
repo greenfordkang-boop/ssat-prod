@@ -16,6 +16,33 @@ import {
 } from 'recharts'
 import { formatNumber, parseNumber, CHART_COLORS, EXCLUDED_PROCESSES } from '@/lib/utils'
 
+// 단가 데이터에서 매칭하는 헬퍼 함수
+const findPriceData = (
+  priceData: { [key: string]: string | number | undefined }[],
+  itemCode?: string,
+  itemName?: string
+) => {
+  return priceData.find(p => {
+    // 품목코드 매칭 (다양한 필드명 지원)
+    const priceItemCode = p.품목코드 || p.품번 || p.품목번호 || p.itemCode || p.item_code || p.code
+    if (itemCode && priceItemCode && String(priceItemCode) === String(itemCode)) {
+      return true
+    }
+    // 품목명 매칭 (다양한 필드명 지원)
+    const priceItemName = p.품목명 || p.품명 || p.productName || p.product_name || p.name
+    if (itemName && priceItemName && String(priceItemName) === String(itemName)) {
+      return true
+    }
+    return false
+  })
+}
+
+// 단가 값 추출 헬퍼 함수
+const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
+  const priceVal = priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice || priceItem.unit_price || 0
+  return parseNumber(priceVal)
+}
+
 // 엑셀 다운로드 함수
 const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
   if (data.length === 0) return
@@ -49,7 +76,7 @@ export default function OverviewDashboard() {
 
   // 공정별 종합효율 계산 (테이블 데이터)
   const processOEE = useMemo(() => {
-    const stats: Record<string, { production: number; good: number; defect: number }> = {}
+    const stats: Record<string, { production: number; good: number; defect: number; defectAmount: number }> = {}
 
     filteredData.forEach(row => {
       const process = row.공정 || '기타'
@@ -58,14 +85,21 @@ export default function OverviewDashboard() {
       const prod = parseNumber(row.생산수량)
       const goodQty = parseNumber(row.양품수량)
       const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+      const actualDefect = defectQty > 0 ? defectQty : 0
 
       if (!stats[process]) {
-        stats[process] = { production: 0, good: 0, defect: 0 }
+        stats[process] = { production: 0, good: 0, defect: 0, defectAmount: 0 }
       }
 
       stats[process].production += prod
       stats[process].good += goodQty
-      stats[process].defect += defectQty > 0 ? defectQty : 0
+      stats[process].defect += actualDefect
+
+      // 불량금액 계산
+      const price = findPriceData(data.priceData, row.품목코드, row.품목명)
+      if (price) {
+        stats[process].defectAmount += actualDefect * getPriceValue(price)
+      }
     })
 
     return Object.entries(stats)
@@ -81,13 +115,15 @@ export default function OverviewDashboard() {
           공정: name,
           생산수량: values.production,
           양품수량: values.good,
+          불량수량: values.defect,
+          불량금액: Math.round(values.defectAmount),
           시간가동율: timeAvail,
           성능가동율: perfRate,
           양품율: Math.round(qualityRate * 10) / 10,
           '종합효율(OEE)': Math.round(oee * 10) / 10
         }
       })
-  }, [filteredData])
+  }, [filteredData, data.priceData])
 
   // 정렬된 데이터
   const sortedProcessOEE = useMemo(() => {
@@ -107,16 +143,20 @@ export default function OverviewDashboard() {
   // OEE 요약 통계 (테이블 데이터 기반)
   const oeeStats = useMemo(() => {
     if (processOEE.length === 0) {
-      return { oee: 0, timeAvailability: 0, performanceRate: 0, qualityRate: 0 }
+      return { oee: 0, timeAvailability: 0, performanceRate: 0, qualityRate: 0, totalDefect: 0, totalDefectAmount: 0 }
     }
 
     // 전체 생산량 기준 가중평균
     let totalProduction = 0
     let totalGood = 0
+    let totalDefect = 0
+    let totalDefectAmount = 0
 
     processOEE.forEach(row => {
       totalProduction += row.생산수량
       totalGood += row.양품수량
+      totalDefect += row.불량수량
+      totalDefectAmount += row.불량금액
     })
 
     const avgQuality = totalProduction > 0 ? (totalGood / totalProduction) * 100 : 0
@@ -128,7 +168,9 @@ export default function OverviewDashboard() {
       oee: Math.round(avgOEE * 10) / 10,
       timeAvailability: avgTimeAvail,
       performanceRate: avgPerfRate,
-      qualityRate: Math.round(avgQuality * 10) / 10
+      qualityRate: Math.round(avgQuality * 10) / 10,
+      totalDefect,
+      totalDefectAmount
     }
   }, [processOEE])
 
@@ -250,7 +292,7 @@ export default function OverviewDashboard() {
       </div>
 
       {/* OEE 요약 카드 */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <div className="bg-white rounded-xl p-6 border border-slate-200">
           <div className="text-sm text-slate-500 mb-1">{selectedMonth}월 종합효율 (OEE)</div>
           <div className="text-4xl font-bold text-slate-800">{oeeStats.oee.toFixed(1)}%</div>
@@ -270,6 +312,12 @@ export default function OverviewDashboard() {
         <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-xl p-6 border border-cyan-200">
           <div className="text-sm text-slate-500 mb-1">평균 양품율</div>
           <div className="text-4xl font-bold text-cyan-600">{oeeStats.qualityRate.toFixed(1)}%</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
+          <div className="text-sm text-slate-500 mb-1">불량금액</div>
+          <div className="text-3xl font-bold text-red-600">{formatNumber(oeeStats.totalDefectAmount)}</div>
+          <div className="text-xs text-slate-400 mt-2">불량 {formatNumber(oeeStats.totalDefect)} EA</div>
         </div>
       </div>
 
@@ -324,7 +372,7 @@ export default function OverviewDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {['공정', '생산수량', '양품수량', '시간가동율', '성능가동율', '양품율', '종합효율(OEE)'].map(field => (
+                  {['공정', '생산수량', '양품수량', '불량수량', '불량금액', '시간가동율', '성능가동율', '양품율', '종합효율(OEE)'].map(field => (
                     <th
                       key={field}
                       onClick={() => handleSort(field)}
@@ -346,6 +394,8 @@ export default function OverviewDashboard() {
                     <td className="px-4 py-3 font-medium text-slate-700">{row.공정}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.생산수량)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.양품수량)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(row.불량수량)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(row.불량금액)}원</td>
                     <td className="px-4 py-3 text-right tabular-nums">{row.시간가동율.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right tabular-nums">{row.성능가동율.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right tabular-nums">{row.양품율.toFixed(1)}%</td>

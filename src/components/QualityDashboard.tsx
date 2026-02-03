@@ -72,6 +72,33 @@ function SortableHeader({
   )
 }
 
+// 단가 데이터에서 매칭하는 헬퍼 함수
+const findPriceData = (
+  priceData: { [key: string]: string | number | undefined }[],
+  itemCode?: string,
+  itemName?: string
+) => {
+  return priceData.find(p => {
+    // 품목코드 매칭 (다양한 필드명 지원)
+    const priceItemCode = p.품목코드 || p.품번 || p.품목번호 || p.itemCode || p.item_code || p.code
+    if (itemCode && priceItemCode && String(priceItemCode) === String(itemCode)) {
+      return true
+    }
+    // 품목명 매칭 (다양한 필드명 지원)
+    const priceItemName = p.품목명 || p.품명 || p.productName || p.product_name || p.name
+    if (itemName && priceItemName && String(priceItemName) === String(itemName)) {
+      return true
+    }
+    return false
+  })
+}
+
+// 단가 값 추출 헬퍼 함수
+const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
+  const priceVal = priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice || priceItem.unit_price || 0
+  return parseNumber(priceVal)
+}
+
 export default function QualityDashboard() {
   const { data, selectedMonth, getFilteredData } = useData()
   const filteredData = getFilteredData()
@@ -103,11 +130,9 @@ export default function QualityDashboard() {
       totalScrap += scrap
 
       // 불량금액 계산 (단가 데이터가 있으면 사용)
-      const price = data.priceData.find(p =>
-        p.품목코드 === row.품목코드 || p.품목명 === row.품목명
-      )
+      const price = findPriceData(data.priceData, row.품목코드, row.품목명)
       if (price) {
-        totalDefectAmount += (defect > 0 ? defect : 0) * parseNumber(price.단가 || price.price || 0)
+        totalDefectAmount += (defect > 0 ? defect : 0) * getPriceValue(price)
       }
     })
 
@@ -188,11 +213,9 @@ export default function QualityDashboard() {
       stats[key].defect += defectQty > 0 ? defectQty : 0
 
       // 불량금액
-      const price = data.priceData.find(p =>
-        p.품목코드 === row.품목코드 || p.품목명 === row.품목명
-      )
+      const price = findPriceData(data.priceData, row.품목코드, row.품목명)
       if (price) {
-        stats[key].defectAmount += (defectQty > 0 ? defectQty : 0) * parseNumber(price.단가 || price.price || 0)
+        stats[key].defectAmount += (defectQty > 0 ? defectQty : 0) * getPriceValue(price)
       }
     })
 
