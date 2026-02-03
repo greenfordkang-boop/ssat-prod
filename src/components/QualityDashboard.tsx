@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useData } from '@/contexts/DataContext'
-import { formatNumber, formatPercent, parseNumber, CHART_COLORS, EXCLUDED_PROCESSES, PROCESS_MAPPING } from '@/lib/utils'
+import { formatNumber, formatPercent, parseNumber, EXCLUDED_PROCESSES } from '@/lib/utils'
 import {
   BarChart,
   Bar,
@@ -11,17 +11,73 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
   ComposedChart,
-  Legend
+  Legend,
+  Line
 } from 'recharts'
+
+type SortConfig = { key: string; direction: 'asc' | 'desc' } | null
+
+// 엑셀 다운로드 함수
+const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
+  if (data.length === 0) return
+  const headers = Object.keys(data[0])
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => headers.map(h => {
+      const val = row[h]
+      const strVal = String(val ?? '')
+      return strVal.includes(',') ? `"${strVal}"` : strVal
+    }).join(','))
+  ].join('\n')
+  const BOM = '\uFEFF'
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// 정렬 가능한 테이블 헤더
+function SortableHeader({
+  label,
+  sortKey,
+  sortConfig,
+  onSort,
+  align = 'left'
+}: {
+  label: string
+  sortKey: string
+  sortConfig: SortConfig
+  onSort: (key: string) => void
+  align?: 'left' | 'right' | 'center'
+}) {
+  const isActive = sortConfig?.key === sortKey
+  return (
+    <th
+      className={`px-4 py-3 font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none ${
+        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+      }`}
+      onClick={() => onSort(sortKey)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <span className="text-xs">
+          {isActive ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </span>
+    </th>
+  )
+}
 
 export default function QualityDashboard() {
   const { data, selectedMonth, getFilteredData } = useData()
   const filteredData = getFilteredData()
   const [showTable, setShowTable] = useState(true)
   const [processFilter, setProcessFilter] = useState('all')
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'defectRate', direction: 'desc' })
 
   // 전체 품질 통계
   const qualityStats = useMemo(() => {
@@ -131,16 +187,26 @@ export default function QualityDashboard() {
       }
     })
 
-    return Object.values(stats)
+    let result = Object.values(stats)
       .filter(item => processFilter === 'all' || item.process === processFilter)
       .map(item => ({
         ...item,
         defectRate: item.production > 0 ? (item.defect / item.production) * 100 : 0,
         yieldRate: item.production > 0 ? (item.good / item.production) * 100 : 0
       }))
-      .sort((a, b) => b.defectRate - a.defectRate)
-      .slice(0, 50)
-  }, [filteredData, data.priceData, processFilter])
+
+    // 정렬
+    if (sortConfig) {
+      result.sort((a, b) => {
+        const aVal = a[sortConfig.key as keyof typeof a]
+        const bVal = b[sortConfig.key as keyof typeof b]
+        const cmp = typeof aVal === 'number' ? aVal - (bVal as number) : String(aVal).localeCompare(String(bVal))
+        return sortConfig.direction === 'asc' ? cmp : -cmp
+      })
+    }
+
+    return result.slice(0, 50)
+  }, [filteredData, data.priceData, processFilter, sortConfig])
 
   // 공정 목록
   const processes = useMemo(() => {
@@ -153,6 +219,15 @@ export default function QualityDashboard() {
     })
     return Array.from(set)
   }, [filteredData])
+
+  // 정렬 핸들러
+  const handleSort = (key: string) => {
+    if (sortConfig?.key === key) {
+      setSortConfig(sortConfig.direction === 'asc' ? { key, direction: 'desc' } : null)
+    } else {
+      setSortConfig({ key, direction: 'asc' })
+    }
+  }
 
   // 데이터 없음
   if (data.rawData.length === 0) {
@@ -194,7 +269,7 @@ export default function QualityDashboard() {
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
           <div className="text-sm text-slate-500 mb-1">평균 수율</div>
-          <div className="text-3xl font-bold text-blue-600">{formatPercent(qualityStats.yieldRate)}</div>
+          <div className="text-3xl font-bold text-blue-600">{qualityStats.yieldRate.toFixed(1)}%</div>
           <div className="text-xs text-slate-500 mt-2">양품: {formatNumber(qualityStats.totalGood)} EA</div>
         </div>
 
@@ -206,13 +281,13 @@ export default function QualityDashboard() {
 
         <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
           <div className="text-sm text-slate-500 mb-1">평균 불량율</div>
-          <div className="text-3xl font-bold text-red-600">{formatPercent(qualityStats.defectRate)}</div>
+          <div className="text-3xl font-bold text-red-600">{qualityStats.defectRate.toFixed(1)}%</div>
           <div className="text-xs text-slate-500 mt-2">불량: {formatNumber(qualityStats.totalDefect)} EA</div>
         </div>
 
         <div className="bg-gradient-to-br from-pink-50 to-pink-100 rounded-xl p-6 border border-pink-200">
           <div className="text-sm text-slate-500 mb-1">평균 폐기율</div>
-          <div className="text-3xl font-bold text-pink-600">{formatPercent(qualityStats.scrapRate)}</div>
+          <div className="text-3xl font-bold text-pink-600">{qualityStats.scrapRate.toFixed(1)}%</div>
           <div className="text-xs text-slate-500 mt-2">폐기: {formatNumber(qualityStats.totalScrap)} EA</div>
         </div>
       </div>
@@ -232,7 +307,7 @@ export default function QualityDashboard() {
               <YAxis yAxisId="right" orientation="right" domain={[80, 100]} tickFormatter={(v) => `${v}%`} />
               <Tooltip
                 formatter={(value, name) => {
-                  if (name === '수율(%)') return [`${value}%`, name]
+                  if (name === '수율(%)') return [`${Number(value).toFixed(1)}%`, name]
                   return [formatNumber(value as number), name]
                 }}
               />
@@ -255,14 +330,32 @@ export default function QualityDashboard() {
           <h3 className="font-bold text-slate-700 flex items-center gap-2">
             <span className="text-xl">📋</span>
             품목별 불량율 현황
-            <span className="text-sm font-normal text-slate-400">(불량율 높은 순)</span>
+            <span className="text-sm font-normal text-slate-400">({productDefects.length}건)</span>
           </h3>
-          <button
-            onClick={() => setShowTable(!showTable)}
-            className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1 bg-slate-100 rounded-lg"
-          >
-            {showTable ? '접기' : '펼치기'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => downloadExcel(productDefects.map(item => ({
+                순위: productDefects.indexOf(item) + 1,
+                품목명: item.product,
+                공정: item.process,
+                생산수량: item.production,
+                양품수량: item.good,
+                불량수량: item.defect,
+                불량금액: Math.round(item.defectAmount),
+                '불량율(%)': item.defectRate.toFixed(1),
+                '수율(%)': item.yieldRate.toFixed(1)
+              })), `품목별_불량율현황_${selectedMonth}월`)}
+              className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
+            >
+              📥 엑셀
+            </button>
+            <button
+              onClick={() => setShowTable(!showTable)}
+              className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1 bg-slate-100 rounded-lg"
+            >
+              {showTable ? '접기' : '펼치기'}
+            </button>
+          </div>
         </div>
 
         {showTable && (
@@ -271,14 +364,14 @@ export default function QualityDashboard() {
               <thead className="bg-slate-50 sticky top-0">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold text-slate-600">순위</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">품목명</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">공정</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">생산수량</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">양품수량</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">불량수량</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">불량금액</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">불량율</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">수율</th>
+                  <SortableHeader label="품목명" sortKey="product" sortConfig={sortConfig} onSort={handleSort} />
+                  <SortableHeader label="공정" sortKey="process" sortConfig={sortConfig} onSort={handleSort} />
+                  <SortableHeader label="생산수량" sortKey="production" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                  <SortableHeader label="양품수량" sortKey="good" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                  <SortableHeader label="불량수량" sortKey="defect" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                  <SortableHeader label="불량금액" sortKey="defectAmount" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                  <SortableHeader label="불량율" sortKey="defectRate" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                  <SortableHeader label="수율" sortKey="yieldRate" sortConfig={sortConfig} onSort={handleSort} align="right" />
                   <th className="text-center px-4 py-3 font-semibold text-slate-600">상태</th>
                 </tr>
               </thead>
@@ -294,8 +387,8 @@ export default function QualityDashboard() {
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(item.good)}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(item.defect)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(Math.round(item.defectAmount))}원</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatPercent(item.defectRate)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatPercent(item.yieldRate)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{item.defectRate.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{item.yieldRate.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${
                         item.defectRate > 5 ? 'bg-red-100 text-red-700' :

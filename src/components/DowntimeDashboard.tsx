@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { formatNumber, formatPercent } from '@/lib/utils'
 import {
@@ -28,8 +28,65 @@ const COLORS = [
   '#fbcfe8'  // 파스텔 핑크
 ]
 
+type SortConfig = { key: string; direction: 'asc' | 'desc' } | null
+
+// 엑셀 다운로드 함수
+const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
+  if (data.length === 0) return
+  const headers = Object.keys(data[0])
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => headers.map(h => {
+      const val = row[h]
+      const strVal = String(val ?? '')
+      return strVal.includes(',') ? `"${strVal}"` : strVal
+    }).join(','))
+  ].join('\n')
+  const BOM = '\uFEFF'
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// 정렬 가능한 테이블 헤더
+function SortableHeader({
+  label,
+  sortKey,
+  sortConfig,
+  onSort,
+  align = 'left'
+}: {
+  label: string
+  sortKey: string
+  sortConfig: SortConfig
+  onSort: (key: string) => void
+  align?: 'left' | 'right'
+}) {
+  const isActive = sortConfig?.key === sortKey
+  return (
+    <th
+      className={`px-4 py-3 font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none ${align === 'right' ? 'text-right' : 'text-left'}`}
+      onClick={() => onSort(sortKey)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <span className="text-xs">
+          {isActive ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </span>
+    </th>
+  )
+}
+
 export default function DowntimeDashboard() {
   const { data, selectedMonth } = useData()
+  const [showTable, setShowTable] = useState(true)
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'value', direction: 'desc' })
+  const [reasonFilter, setReasonFilter] = useState('')
 
   // 가동율 데이터 필터링
   const filteredData = useMemo(() => {
@@ -61,11 +118,26 @@ export default function DowntimeDashboard() {
       }
     })
 
-    return Array.from(reasonMap.entries())
+    let result = Array.from(reasonMap.entries())
       .map(([name, value]) => ({ name, value: Math.round(value) }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8)
-  }, [filteredData])
+
+    // 필터
+    if (reasonFilter) {
+      result = result.filter(r => r.name.toLowerCase().includes(reasonFilter.toLowerCase()))
+    }
+
+    // 정렬
+    if (sortConfig) {
+      result.sort((a, b) => {
+        const aVal = a[sortConfig.key as keyof typeof a]
+        const bVal = b[sortConfig.key as keyof typeof b]
+        const cmp = typeof aVal === 'number' ? aVal - (bVal as number) : String(aVal).localeCompare(String(bVal))
+        return sortConfig.direction === 'asc' ? cmp : -cmp
+      })
+    }
+
+    return result.slice(0, 20)
+  }, [filteredData, reasonFilter, sortConfig])
 
   // 설비별 비가동 분석
   const downtimeByEquipment = useMemo(() => {
@@ -101,6 +173,15 @@ export default function DowntimeDashboard() {
       return sum + (parseFloat(String(item.비가동시간 || item.downtime_minutes || 0)) || 0)
     }, 0)
   }, [filteredData])
+
+  // 정렬 핸들러
+  const handleSort = (key: string) => {
+    if (sortConfig?.key === key) {
+      setSortConfig(sortConfig.direction === 'asc' ? { key, direction: 'desc' } : null)
+    } else {
+      setSortConfig({ key, direction: 'asc' })
+    }
+  }
 
   // 데이터 없음 처리
   if (data.availabilityData.length === 0) {
@@ -161,7 +242,7 @@ export default function DowntimeDashboard() {
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={downtimeByReason}
+                  data={downtimeByReason.slice(0, 8)}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -171,7 +252,7 @@ export default function DowntimeDashboard() {
                   label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
                   labelLine={true}
                 >
-                  {downtimeByReason.map((_, index) => (
+                  {downtimeByReason.slice(0, 8).map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -193,7 +274,7 @@ export default function DowntimeDashboard() {
           </h3>
           {downtimeByReason.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={downtimeByReason} layout="vertical">
+              <BarChart data={downtimeByReason.slice(0, 8)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis type="number" tickFormatter={(v) => formatNumber(v)} />
                 <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12 }} />
@@ -238,45 +319,75 @@ export default function DowntimeDashboard() {
 
       {/* 상세 테이블 */}
       <div className="bg-white rounded-xl p-6 border border-slate-200">
-        <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-          <span className="w-1 h-5 bg-slate-500 rounded-full" />
-          비가동 상세 현황
-        </h3>
-        <div className="overflow-auto max-h-96">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 sticky top-0">
-              <tr>
-                <th className="text-left px-4 py-3 font-semibold text-slate-600">비가동 사유</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600">시간(분)</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600">비율</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">그래프</th>
-              </tr>
-            </thead>
-            <tbody>
-              {downtimeByReason.map((item, idx) => {
-                const percent = totalDowntime > 0 ? (item.value / totalDowntime) * 100 : 0
-                return (
-                  <tr key={item.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                    <td className="px-4 py-3 font-medium text-slate-700">{item.name}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{formatNumber(item.value)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{formatPercent(percent)}</td>
-                    <td className="px-4 py-3">
-                      <div className="w-full bg-slate-200 rounded-full h-2.5">
-                        <div
-                          className="h-2.5 rounded-full"
-                          style={{
-                            width: `${percent}%`,
-                            backgroundColor: COLORS[idx % COLORS.length]
-                          }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-slate-700 flex items-center gap-2">
+            <span className="w-1 h-5 bg-slate-500 rounded-full" />
+            비가동 상세 현황
+            <span className="text-sm font-normal text-slate-400">({downtimeByReason.length}건)</span>
+          </h3>
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              placeholder="사유 검색..."
+              value={reasonFilter}
+              onChange={(e) => setReasonFilter(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg w-40"
+            />
+            <button
+              onClick={() => downloadExcel(downtimeByReason.map((item, idx) => ({
+                비가동사유: item.name,
+                '시간(분)': item.value,
+                '비율(%)': totalDowntime > 0 ? ((item.value / totalDowntime) * 100).toFixed(1) : '0'
+              })), `비가동현황_${selectedMonth}월`)}
+              className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
+            >
+              📥 엑셀
+            </button>
+            <button
+              onClick={() => setShowTable(!showTable)}
+              className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 bg-slate-100 rounded-lg"
+            >
+              {showTable ? '접기' : '펼치기'}
+            </button>
+          </div>
         </div>
+        {showTable && (
+          <div className="overflow-auto max-h-96">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 sticky top-0">
+                <tr>
+                  <SortableHeader label="비가동 사유" sortKey="name" sortConfig={sortConfig} onSort={handleSort} />
+                  <SortableHeader label="시간(분)" sortKey="value" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                  <th className="text-right px-4 py-3 font-semibold text-slate-600">비율</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">그래프</th>
+                </tr>
+              </thead>
+              <tbody>
+                {downtimeByReason.map((item, idx) => {
+                  const percent = totalDowntime > 0 ? (item.value / totalDowntime) * 100 : 0
+                  return (
+                    <tr key={item.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="px-4 py-3 font-medium text-slate-700">{item.name}</td>
+                      <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatNumber(item.value)}</td>
+                      <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{percent.toFixed(1)}%</td>
+                      <td className="px-4 py-3">
+                        <div className="w-full bg-slate-200 rounded-full h-2.5">
+                          <div
+                            className="h-2.5 rounded-full"
+                            style={{
+                              width: `${percent}%`,
+                              backgroundColor: COLORS[idx % COLORS.length]
+                            }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
