@@ -136,7 +136,19 @@ export interface PivotConfig {
 }
 
 // 네비게이션 탭
-export type MainTab = 'overview' | 'process' | 'wip'
+export type MainTab = 'overview' | 'upload' | 'process' | 'downtime' | 'wip'
 export type ProcessTab = 'injection' | 'painting' | 'printing' | 'assembly'
 export type SubMenu = 'production' | 'uph' | 'cycletime' | 'packaging' | 'defect-repair' | 'material-defect'
 export type WipSubTab = 'status' | 'price'
+
+// 데이터 타입 키
+export type DataType =
+  | 'rawData'
+  | 'availabilityData'
+  | 'detailData'
+  | 'ctData'
+  | 'materialDefectData'
+  | 'wipInventoryData'
+  | 'repairStatusData'
+  | 'packagingStatusData'
+  | 'priceData'

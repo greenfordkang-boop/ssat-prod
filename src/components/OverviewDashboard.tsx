@@ -2,13 +2,26 @@
 
 import { useMemo } from 'react'
 import { useData } from '@/contexts/DataContext'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { formatNumber, parseNumber, CHART_COLORS, EXCLUDED_PROCESSES } from '@/lib/utils'
-import FileUploader from './FileUploader'
 
 export default function OverviewDashboard() {
   const { data, selectedMonth, getFilteredData } = useData()
   const filteredData = getFilteredData()
+
+  // 데이터 없음 표시
+  if (data.rawData.length === 0) {
+    return (
+      <div className="bg-white rounded-xl p-16 text-center border border-slate-200">
+        <div className="text-6xl mb-4">📊</div>
+        <h3 className="text-xl font-bold text-slate-700 mb-2">생산실적 데이터가 없습니다</h3>
+        <p className="text-slate-500 mb-6">종합현황 분석을 위해 생산실적 CSV 파일을 업로드하세요</p>
+        <div className="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 font-medium rounded-xl">
+          📤 파일업로드 메뉴에서 생산실적 데이터를 업로드해 주세요
+        </div>
+      </div>
+    )
+  }
 
   // 공정별 집계
   const processStats = useMemo(() => {
@@ -81,16 +94,16 @@ export default function OverviewDashboard() {
   }, [filteredData])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between bg-white rounded-xl p-5 border border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-1 h-6 bg-blue-500 rounded" />
           <h2 className="text-xl font-bold text-gray-900">{selectedMonth}월 종합현황</h2>
         </div>
-        <div className="flex items-center gap-3">
-          <FileUploader dataType="rawData" label="생산실적" />
-          <FileUploader dataType="availabilityData" label="가동율" />
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <span className="bg-slate-100 px-3 py-1 rounded-lg">생산실적 {data.rawData.length.toLocaleString()}건</span>
+          <span className="bg-slate-100 px-3 py-1 rounded-lg">가동율 {data.availabilityData.length.toLocaleString()}건</span>
         </div>
       </div>
 

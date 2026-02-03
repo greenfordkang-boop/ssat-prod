@@ -1,0 +1,283 @@
+'use client'
+
+import { useMemo } from 'react'
+import { useData } from '@/contexts/DataContext'
+import { formatNumber, formatPercent } from '@/lib/utils'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts'
+
+const COLORS = [
+  '#93c5fd', // 파스텔 블루
+  '#6ee7b7', // 파스텔 그린
+  '#fdba74', // 파스텔 오렌지
+  '#fca5a5', // 파스텔 레드
+  '#c4b5fd', // 파스텔 퍼플
+  '#fde047', // 파스텔 옐로우
+  '#a5f3fc', // 파스텔 시안
+  '#fbcfe8'  // 파스텔 핑크
+]
+
+export default function DowntimeDashboard() {
+  const { data, selectedMonth } = useData()
+
+  // 가동율 데이터 필터링
+  const filteredData = useMemo(() => {
+    return data.availabilityData.filter(d => {
+      const dateStr = String(d.date || d.일자 || '')
+      if (!dateStr) return true
+
+      let rowMonth = null
+      if (dateStr.includes('-')) {
+        rowMonth = parseInt(dateStr.split('-')[1]) || null
+      } else if (dateStr.includes('/')) {
+        const parts = dateStr.split('/')
+        rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0])
+      }
+      return !rowMonth || rowMonth === selectedMonth
+    })
+  }, [data.availabilityData, selectedMonth])
+
+  // 비가동 사유별 분석
+  const downtimeByReason = useMemo(() => {
+    const reasonMap = new Map<string, number>()
+
+    filteredData.forEach(item => {
+      const reason = String(item.비가동사유 || item.downtime_reason || '기타')
+      const time = parseFloat(String(item.비가동시간 || item.downtime_minutes || 0)) || 0
+
+      if (time > 0) {
+        reasonMap.set(reason, (reasonMap.get(reason) || 0) + time)
+      }
+    })
+
+    return Array.from(reasonMap.entries())
+      .map(([name, value]) => ({ name, value: Math.round(value) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8)
+  }, [filteredData])
+
+  // 설비별 비가동 분석
+  const downtimeByEquipment = useMemo(() => {
+    const equipMap = new Map<string, { total: number; downtime: number }>()
+
+    filteredData.forEach(item => {
+      const equip = String(item['설비(라인)명'] || item.equipment_name || '기타')
+      const total = parseFloat(String(item.가동시간 || item.operating_minutes || 0)) || 0
+      const downtime = parseFloat(String(item.비가동시간 || item.downtime_minutes || 0)) || 0
+
+      if (!equipMap.has(equip)) {
+        equipMap.set(equip, { total: 0, downtime: 0 })
+      }
+      const current = equipMap.get(equip)!
+      current.total += total + downtime
+      current.downtime += downtime
+    })
+
+    return Array.from(equipMap.entries())
+      .map(([name, data]) => ({
+        name: name.length > 10 ? name.slice(0, 10) + '...' : name,
+        가동시간: Math.round(data.total - data.downtime),
+        비가동시간: Math.round(data.downtime),
+        비가동율: data.total > 0 ? Math.round((data.downtime / data.total) * 1000) / 10 : 0
+      }))
+      .sort((a, b) => b.비가동율 - a.비가동율)
+      .slice(0, 10)
+  }, [filteredData])
+
+  // 총 비가동시간 계산
+  const totalDowntime = useMemo(() => {
+    return filteredData.reduce((sum, item) => {
+      return sum + (parseFloat(String(item.비가동시간 || item.downtime_minutes || 0)) || 0)
+    }, 0)
+  }, [filteredData])
+
+  // 데이터 없음 처리
+  if (data.availabilityData.length === 0) {
+    return (
+      <div className="bg-white rounded-xl p-16 text-center border border-slate-200">
+        <div className="text-6xl mb-4">⚠️</div>
+        <h3 className="text-xl font-bold text-slate-700 mb-2">가동율 데이터가 없습니다</h3>
+        <p className="text-slate-500 mb-6">비가동현황 분석을 위해 가동율 CSV 파일을 업로드하세요</p>
+        <div className="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 font-medium rounded-xl">
+          📤 파일업로드 메뉴에서 가동율 데이터를 업로드해 주세요
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl p-6 border border-slate-200">
+          <div className="text-sm font-medium text-slate-500 mb-2">데이터 건수</div>
+          <div className="text-3xl font-bold text-slate-800">{formatNumber(filteredData.length)}</div>
+          <div className="text-xs text-slate-400 mt-1">{selectedMonth}월 기준</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
+          <div className="text-sm font-medium text-red-600 mb-2">총 비가동시간</div>
+          <div className="text-3xl font-bold text-red-700">{formatNumber(Math.round(totalDowntime))}</div>
+          <div className="text-xs text-red-500 mt-1">분 (minutes)</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
+          <div className="text-sm font-medium text-amber-600 mb-2">주요 비가동 사유</div>
+          <div className="text-xl font-bold text-amber-700 truncate">
+            {downtimeByReason[0]?.name || '-'}
+          </div>
+          <div className="text-xs text-amber-500 mt-1">
+            {downtimeByReason[0] ? `${formatNumber(downtimeByReason[0].value)}분` : '-'}
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+          <div className="text-sm font-medium text-blue-600 mb-2">비가동 사유 수</div>
+          <div className="text-3xl font-bold text-blue-700">{downtimeByReason.length}</div>
+          <div className="text-xs text-blue-500 mt-1">개 유형</div>
+        </div>
+      </div>
+
+      {/* 차트 영역 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 비가동 사유별 파이 차트 */}
+        <div className="bg-white rounded-xl p-6 border border-slate-200">
+          <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <span className="w-1 h-5 bg-blue-500 rounded-full" />
+            비가동 사유별 분포
+          </h3>
+          {downtimeByReason.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={downtimeByReason}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
+                  labelLine={true}
+                >
+                  {downtimeByReason.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => formatNumber(value as number) + '분'} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-slate-400">
+              데이터가 부족합니다
+            </div>
+          )}
+        </div>
+
+        {/* 비가동 사유별 바 차트 */}
+        <div className="bg-white rounded-xl p-6 border border-slate-200">
+          <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <span className="w-1 h-5 bg-red-500 rounded-full" />
+            비가동 사유별 시간
+          </h3>
+          {downtimeByReason.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={downtimeByReason} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis type="number" tickFormatter={(v) => formatNumber(v)} />
+                <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(value) => formatNumber(value as number) + '분'} />
+                <Bar dataKey="value" fill="#fca5a5" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-slate-400">
+              데이터가 부족합니다
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 설비별 비가동 현황 */}
+      <div className="bg-white rounded-xl p-6 border border-slate-200">
+        <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <span className="w-1 h-5 bg-amber-500 rounded-full" />
+          설비별 가동/비가동 현황
+        </h3>
+        {downtimeByEquipment.length > 0 ? (
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart data={downtimeByEquipment}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={80} />
+              <YAxis tickFormatter={(v) => formatNumber(v)} />
+              <Tooltip
+                formatter={(value, name) => [formatNumber(value as number) + '분', name]}
+              />
+              <Legend />
+              <Bar dataKey="가동시간" stackId="a" fill="#6ee7b7" />
+              <Bar dataKey="비가동시간" stackId="a" fill="#fca5a5" />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-64 flex items-center justify-center text-slate-400">
+            설비별 데이터가 부족합니다
+          </div>
+        )}
+      </div>
+
+      {/* 상세 테이블 */}
+      <div className="bg-white rounded-xl p-6 border border-slate-200">
+        <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <span className="w-1 h-5 bg-slate-500 rounded-full" />
+          비가동 상세 현황
+        </h3>
+        <div className="overflow-auto max-h-96">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 sticky top-0">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">비가동 사유</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600">시간(분)</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600">비율</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">그래프</th>
+              </tr>
+            </thead>
+            <tbody>
+              {downtimeByReason.map((item, idx) => {
+                const percent = totalDowntime > 0 ? (item.value / totalDowntime) * 100 : 0
+                return (
+                  <tr key={item.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    <td className="px-4 py-3 font-medium text-slate-700">{item.name}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{formatNumber(item.value)}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{formatPercent(percent)}</td>
+                    <td className="px-4 py-3">
+                      <div className="w-full bg-slate-200 rounded-full h-2.5">
+                        <div
+                          className="h-2.5 rounded-full"
+                          style={{
+                            width: `${percent}%`,
+                            backgroundColor: COLORS[idx % COLORS.length]
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}

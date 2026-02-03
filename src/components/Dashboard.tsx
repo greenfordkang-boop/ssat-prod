@@ -5,7 +5,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useData } from '@/contexts/DataContext'
 import Navigation from './Navigation'
 import OverviewDashboard from './OverviewDashboard'
+import FileUploadPage from './FileUploadPage'
 import ProcessDashboard from './ProcessDashboard'
+import DowntimeDashboard from './DowntimeDashboard'
 import WipDashboard from './WipDashboard'
 import LoginForm from './LoginForm'
 
@@ -67,11 +69,13 @@ export default function Dashboard() {
       )}
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto">
+      <main className="max-w-7xl mx-auto px-6 py-6">
         {activeTab === 'overview' && <OverviewDashboard />}
+        {activeTab === 'upload' && <FileUploadPage />}
         {activeTab === 'process' && activeProcess && (
           <ProcessDashboard process={activeProcess} subMenu={activeSubMenu} />
         )}
+        {activeTab === 'downtime' && <DowntimeDashboard />}
         {activeTab === 'wip' && <WipDashboard subTab={activeSubMenu} />}
       </main>
     </div>
