@@ -71,25 +71,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return result
   }
 
-  // Supabase에서 데이터 로드
+  // Supabase에서 데이터 로드 (페이지네이션으로 전체 데이터 가져오기)
   const loadFromSupabase = async (tableName: string): Promise<unknown[]> => {
     try {
-      const { data: result, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .limit(10000)
+      const allData: unknown[] = []
+      const PAGE_SIZE = 1000
+      let offset = 0
+      let hasMore = true
 
-      if (error) throw error
-      if (!result) return []
+      while (hasMore) {
+        const { data: result, error } = await supabase
+          .from(tableName)
+          .select('*')
+          .range(offset, offset + PAGE_SIZE - 1)
+          .order('id', { ascending: true })
 
-      // JSONB 테이블 처리
-      if (JSONB_TABLES.includes(tableName)) {
-        if (result.length > 0 && result[0].data !== undefined) {
-          return result.map(row => row.data).filter(Boolean)
+        if (error) throw error
+
+        if (!result || result.length === 0) {
+          hasMore = false
+        } else {
+          // JSONB 테이블 처리
+          if (JSONB_TABLES.includes(tableName)) {
+            if (result.length > 0 && result[0].data !== undefined) {
+              allData.push(...result.map(row => row.data).filter(Boolean))
+            } else {
+              allData.push(...result.map(toCamelCase))
+            }
+          } else {
+            allData.push(...result.map(toCamelCase))
+          }
+
+          offset += PAGE_SIZE
+
+          // 가져온 데이터가 PAGE_SIZE보다 적으면 더 이상 없음
+          if (result.length < PAGE_SIZE) {
+            hasMore = false
+          }
         }
-        return result.map(toCamelCase)
       }
-      return result.map(toCamelCase)
+
+      console.log(`📥 ${tableName}: 총 ${allData.length}건 로드 완료`)
+      return allData
     } catch (e) {
       console.error(`로드 실패 (${tableName}):`, e)
       return []
