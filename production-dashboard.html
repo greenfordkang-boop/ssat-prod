@@ -766,16 +766,28 @@
       }
     }
 
-    // Supabase에 데이터 저장 (전체 교체)
+    // Supabase에 데이터 저장 (전체 교체, 배치 처리)
     async function saveToSupabase(tableName, data) {
       if (!supabaseConnected || !data || data.length === 0) return false;
       try {
         // 기존 데이터 삭제
         await supabase.from(tableName).delete().neq('id', 0);
+
         // 새 데이터 삽입
         const snakeData = data.map(toSnakeCase);
-        const { error } = await supabase.from(tableName).insert(snakeData);
-        if (error) throw error;
+
+        // 배치 처리 (Supabase는 한 번에 1000건 제한)
+        const BATCH_SIZE = 500;
+        const totalBatches = Math.ceil(snakeData.length / BATCH_SIZE);
+
+        for (let i = 0; i < snakeData.length; i += BATCH_SIZE) {
+          const batch = snakeData.slice(i, i + BATCH_SIZE);
+          const { error } = await supabase.from(tableName).insert(batch);
+          if (error) throw error;
+          const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+          console.log(`📦 Supabase 배치 ${batchNum}/${totalBatches} 저장 완료 (${batch.length}건)`);
+        }
+
         console.log(`✅ Supabase 저장 완료 (${tableName}): ${data.length}건`);
         return true;
       } catch (e) {
@@ -1879,6 +1891,29 @@
       return state.rawData.filter(row => {
         // Laser 공정 제외
         if (excludedProcesses.includes(row.process)) return false;
+
+        // 월 필터링 - 생산일자에서 월 추출하여 비교
+        if (row.date) {
+          const dateStr = String(row.date);
+          let rowMonth = null;
+
+          // 다양한 날짜 형식 처리: YYYY-MM-DD, YYYY/MM/DD, MM/DD, M/D 등
+          if (dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            rowMonth = parseInt(parts[1]) || null;
+          } else if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            // MM/DD/YYYY 또는 YYYY/MM/DD 형식 모두 처리
+            if (parts[0].length === 4) {
+              rowMonth = parseInt(parts[1]) || null;
+            } else {
+              rowMonth = parseInt(parts[0]) || null;
+            }
+          }
+
+          if (rowMonth && rowMonth !== state.selectedMonth) return false;
+        }
+
         if (state.filters.process !== 'all' && row.process !== state.filters.process) return false;
         if (state.filters.equipment !== 'all' && row.equipment !== state.filters.equipment) return false;
         if (state.filters.product !== 'all' && row.productType !== state.filters.product) return false;
