@@ -93,8 +93,9 @@ const findPriceData = (
 
 // 단가 값 추출 헬퍼 함수
 const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
-  // 다양한 필드명에서 단가 찾기
-  const priceVal = priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice ||
+  // 다양한 필드명에서 단가 찾기 (합계단가 우선!)
+  const priceVal = priceItem.합계단가 || priceItem['합계단가'] ||
+                   priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice ||
                    priceItem.unit_price || priceItem.PRICE || priceItem.UNIT_PRICE ||
                    priceItem['단 가'] || priceItem['판매단가'] || priceItem['구매단가'] ||
                    priceItem.cost || priceItem.COST || 0
