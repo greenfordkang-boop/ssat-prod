@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { parseCSV, parseAvailabilityCSV } from '@/lib/utils'
 import * as XLSX from 'xlsx'
+
+// 업로드 시간 타입
+type UploadTimes = Record<string, string>
 
 // 엑셀 파일 파싱 함수
 const parseExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
@@ -70,6 +73,43 @@ interface UploadCardConfig {
 export default function FileUploadPage() {
   const { data, selectedMonth, setSelectedMonth, uploadData, clearData, syncing } = useData()
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [uploadTimes, setUploadTimes] = useState<UploadTimes>({})
+
+  // localStorage에서 업로드 시간 로드
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('uploadTimes')
+      if (stored) {
+        try {
+          setUploadTimes(JSON.parse(stored))
+        } catch (e) {
+          console.error('uploadTimes 파싱 오류:', e)
+        }
+      }
+    }
+  }, [])
+
+  // 업로드 시간 저장 함수
+  const saveUploadTime = (key: string) => {
+    const now = new Date()
+    const timeStr = now.toLocaleString('ko-KR', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    const newTimes = { ...uploadTimes, [key]: timeStr }
+    setUploadTimes(newTimes)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('uploadTimes', JSON.stringify(newTimes))
+    }
+  }
+
+  // 업로드 시간 가져오기
+  const getUploadTime = (cardId: string, process?: string): string | null => {
+    const key = process ? `${cardId}_${process}` : cardId
+    return uploadTimes[key] || null
+  }
 
   // 파일 업로드 핸들러
   const handleFileUpload = useCallback(async (
@@ -147,6 +187,9 @@ export default function FileUploadPage() {
       const success = await uploadData(dataKey, dataToUpload, months.length > 0 ? months : undefined)
 
       if (success) {
+        // 업로드 시간 저장
+        const timeKey = process ? `${cardId}_${process}` : (cardId || dataKey)
+        saveUploadTime(timeKey)
         alert(`${parsedData.length}건 업로드 완료!`)
       } else {
         alert('업로드 중 오류가 발생했습니다.')
@@ -394,10 +437,17 @@ export default function FileUploadPage() {
         {/* Status indicator */}
         <div className={`mt-4 pt-3 border-t border-slate-100 text-xs font-medium ${count > 0 ? card.textColor : 'text-slate-400'}`}>
           {count > 0 ? (
-            <span className="inline-flex items-center gap-1">
-              <CheckIcon />
-              {count.toLocaleString()}건
-            </span>
+            <div className="flex flex-col gap-1">
+              <span className="inline-flex items-center gap-1">
+                <CheckIcon />
+                {count.toLocaleString()}건
+              </span>
+              {getUploadTime(card.id, card.process) && (
+                <span className="text-slate-400 text-[10px]">
+                  📅 {getUploadTime(card.id, card.process)}
+                </span>
+              )}
+            </div>
           ) : (
             '데이터 없음'
           )}
