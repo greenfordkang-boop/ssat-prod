@@ -20,5 +20,15 @@ export const TABLE_MAPPING = {
   priceData: 'price_data'
 } as const
 
-// JSONB로 저장하는 테이블
-export const JSONB_TABLES = ['detail_data', 'availability_data', 'price_data']
+// JSONB로 저장하는 테이블 (모든 테이블 - 컬럼명 문제 해결)
+export const JSONB_TABLES = [
+  'production_data',
+  'availability_data',
+  'detail_data',
+  'ct_data',
+  'material_defect_data',
+  'wip_inventory_data',
+  'repair_status_data',
+  'packaging_status_data',
+  'price_data'
+]
