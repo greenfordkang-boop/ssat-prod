@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
 import { supabase, TABLE_MAPPING, JSONB_TABLES } from '@/lib/supabase'
 import {
   DashboardData,
@@ -56,6 +56,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [filters, setFilters] = useState<FilterState>({ process: 'all', equipment: 'all', product: 'all' })
   const [pivot, setPivot] = useState<PivotConfig>({ rows: '공정', cols: '품종', values: '생산수량', aggFunc: 'sum' })
+
+  // 중복 로딩 방지를 위한 ref
+  const isLoadingRef = useRef(false)
+  const hasLoadedRef = useRef(false)
 
   // snake_case → camelCase 변환
   const toCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
@@ -129,6 +133,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.log(`✅ [${tableName}] 총 ${allData.length}건 로드 완료 (${pageCount} 페이지)`)
       return allData
     } catch (e) {
+      // AbortError는 컴포넌트 언마운트로 인한 정상적인 중단
+      const errorMessage = e instanceof Error ? e.message : String(e)
+      if (errorMessage.includes('AbortError') || errorMessage.includes('aborted')) {
+        console.log(`⏸️ [${tableName}] 요청 중단됨 (컴포넌트 언마운트)`)
+        return []
+      }
       console.error(`❌ 로드 실패 (${tableName}):`, e)
       return []
     }
@@ -223,12 +233,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // 전체 데이터 새로고침 (수동 호출용)
   const refreshData = useCallback(async () => {
-    if (!user || loading) return // 이미 로딩 중이면 중복 호출 방지
+    if (!user || isLoadingRef.current) {
+      console.log('⏭️ 새로고침 스킵: 로그인 없음 또는 로딩 중')
+      return
+    }
+
+    isLoadingRef.current = true
+    setLoading(true)
 
     console.log('🔄 ========== 데이터 새로고침 시작 ==========')
     console.log('👤 현재 사용자:', user.email)
 
-    setLoading(true)
     try {
       const results: Partial<DashboardData> = {}
 
@@ -246,12 +261,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       console.log('==========================================')
     } catch (e) {
-      console.error('❌ 데이터 새로고침 실패:', e)
+      const errorMessage = e instanceof Error ? e.message : String(e)
+      if (!errorMessage.includes('AbortError') && !errorMessage.includes('aborted')) {
+        console.error('❌ 데이터 새로고침 실패:', e)
+      }
     } finally {
+      isLoadingRef.current = false
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, loading])
+  }, [user])
 
   // 데이터 업로드 (핵심 함수 - 충돌 방지)
   const uploadData = async (
@@ -361,51 +380,63 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // 초기 데이터 로드 (user 변경 시에만)
   useEffect(() => {
-    let isMounted = true
+    // 이미 로딩 중이거나 이미 로드한 경우 스킵
+    if (!user || isLoadingRef.current || hasLoadedRef.current) {
+      return
+    }
 
     const loadInitialData = async () => {
-      if (!user || loading) return
+      // 다시 한번 확인 (비동기 환경에서의 race condition 방지)
+      if (isLoadingRef.current || hasLoadedRef.current) {
+        console.log('⏭️ 이미 로딩 중이거나 로드 완료됨 - 스킵')
+        return
+      }
+
+      isLoadingRef.current = true
+      setLoading(true)
 
       console.log('🚀 ========== 초기 데이터 로드 시작 ==========')
       console.log('👤 사용자:', user.email)
       console.log('🌐 Supabase URL:', 'gipksxojxdkqpyyiihcc.supabase.co')
 
-      setLoading(true)
       try {
         const results: Partial<DashboardData> = {}
 
         for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
-          if (!isMounted) return
           const loaded = await loadFromSupabase(tableName)
           results[stateKey as keyof DashboardData] = loaded as never
         }
 
-        if (isMounted) {
-          setData(prev => ({ ...prev, ...results }))
+        setData(prev => ({ ...prev, ...results }))
+        hasLoadedRef.current = true
 
-          // 로드 결과 요약
-          console.log('📊 ========== 초기 로드 결과 요약 ==========')
-          for (const [key, value] of Object.entries(results)) {
-            console.log(`   ${key}: ${(value as unknown[]).length}건`)
-          }
-          console.log('==========================================')
+        // 로드 결과 요약
+        console.log('📊 ========== 초기 로드 결과 요약 ==========')
+        for (const [key, value] of Object.entries(results)) {
+          console.log(`   ${key}: ${(value as unknown[]).length}건`)
         }
+        console.log('==========================================')
       } catch (e) {
-        console.error('❌ 초기 데이터 로드 실패:', e)
-      } finally {
-        if (isMounted) {
-          setLoading(false)
+        const errorMessage = e instanceof Error ? e.message : String(e)
+        if (!errorMessage.includes('AbortError') && !errorMessage.includes('aborted')) {
+          console.error('❌ 초기 데이터 로드 실패:', e)
         }
+      } finally {
+        isLoadingRef.current = false
+        setLoading(false)
       }
     }
 
     loadInitialData()
-
-    return () => {
-      isMounted = false
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]) // user만 dependency - 무한 루프 방지
+
+  // user 변경 시 로드 상태 리셋
+  useEffect(() => {
+    return () => {
+      // 컴포넌트 언마운트 시에만 리셋 (user 변경 시에는 리셋하지 않음)
+    }
+  }, [])
 
   return (
     <DataContext.Provider value={{
