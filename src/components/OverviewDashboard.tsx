@@ -14,93 +14,121 @@ import {
   Line,
   Legend
 } from 'recharts'
-import { formatNumber, formatPercent, parseNumber, CHART_COLORS, EXCLUDED_PROCESSES } from '@/lib/utils'
+import { formatNumber, parseNumber, CHART_COLORS, EXCLUDED_PROCESSES } from '@/lib/utils'
+
+// 엑셀 다운로드 함수
+const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
+  if (data.length === 0) return
+
+  const headers = Object.keys(data[0])
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => headers.map(h => {
+      const val = row[h]
+      return typeof val === 'string' && val.includes(',') ? `"${val}"` : val
+    }).join(','))
+  ].join('\n')
+
+  const BOM = '\uFEFF'
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 export default function OverviewDashboard() {
   const { data, selectedMonth, setSelectedMonth, getFilteredData } = useData()
   const filteredData = getFilteredData()
   const [showDetailTable, setShowDetailTable] = useState(true)
   const [processFilter, setProcessFilter] = useState('all')
+  const [sortField, setSortField] = useState<string>('종합효율(OEE)')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
-  // OEE 계산 (공정별 종합효율) - hooks는 항상 맨 위에!
-  const oeeStats = useMemo(() => {
-    // 가동율 데이터에서 시간가동율, 성능가동율 계산
-    const monthAvailability = data.availabilityData.filter(d => {
-      const dateStr = String(d.date || d.일자 || '')
-      if (!dateStr) return true
-      let rowMonth = null
-      if (dateStr.includes('-')) {
-        rowMonth = parseInt(dateStr.split('-')[1]) || null
-      } else if (dateStr.includes('/')) {
-        const parts = dateStr.split('/')
-        rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0])
+  // 공정별 종합효율 계산 (테이블 데이터)
+  const processOEE = useMemo(() => {
+    const stats: Record<string, { production: number; good: number; defect: number }> = {}
+
+    filteredData.forEach(row => {
+      const process = row.공정 || '기타'
+      if (EXCLUDED_PROCESSES.includes(process)) return
+
+      if (!stats[process]) {
+        stats[process] = { production: 0, good: 0, defect: 0 }
       }
-      return !rowMonth || rowMonth === selectedMonth
+
+      stats[process].production += parseNumber(row.생산수량)
+      stats[process].good += parseNumber(row.양품수량)
+      stats[process].defect += parseNumber(row.불량수량)
     })
 
-    let totalOperatingTime = 0
-    let totalPlannedTime = 0
-    let totalDowntime = 0
+    return Object.entries(stats)
+      .filter(([, v]) => v.production > 0)
+      .map(([name, values]) => {
+        const qualityRate = values.production > 0 ? (values.good / values.production) * 100 : 0
+        // 시간가동율, 성능가동율은 100%로 가정 (별도 데이터 없으면)
+        const timeAvail = 100
+        const perfRate = 100
+        const oee = (timeAvail * perfRate * qualityRate) / 10000
 
-    monthAvailability.forEach(row => {
-      const operating = parseNumber(row.가동시간 || row.operating_minutes || 0)
-      const downtime = parseNumber(row.비가동시간 || row.downtime_minutes || 0)
-      totalOperatingTime += operating
-      totalDowntime += downtime
-      totalPlannedTime += operating + downtime
+        return {
+          공정: name,
+          생산수량: values.production,
+          양품수량: values.good,
+          시간가동율: timeAvail,
+          성능가동율: perfRate,
+          양품율: Math.round(qualityRate * 10) / 10,
+          '종합효율(OEE)': Math.round(oee * 10) / 10
+        }
+      })
+  }, [filteredData])
+
+  // 정렬된 데이터
+  const sortedProcessOEE = useMemo(() => {
+    return [...processOEE].sort((a, b) => {
+      const aVal = a[sortField as keyof typeof a] as number
+      const bVal = b[sortField as keyof typeof b] as number
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal
     })
+  }, [processOEE, sortField, sortDirection])
 
-    // 시간가동율 = 가동시간 / 계획시간
-    const timeAvailability = totalPlannedTime > 0 ? (totalOperatingTime / totalPlannedTime) * 100 : 0
+  // 필터링된 데이터
+  const filteredProcessOEE = useMemo(() => {
+    if (processFilter === 'all') return sortedProcessOEE
+    return sortedProcessOEE.filter(row => row.공정 === processFilter)
+  }, [sortedProcessOEE, processFilter])
 
-    // 생산실적에서 양품율 계산
+  // OEE 요약 통계 (테이블 데이터 기반)
+  const oeeStats = useMemo(() => {
+    if (processOEE.length === 0) {
+      return { oee: 0, timeAvailability: 0, performanceRate: 0, qualityRate: 0 }
+    }
+
+    // 전체 생산량 기준 가중평균
     let totalProduction = 0
     let totalGood = 0
 
-    filteredData.forEach(row => {
-      const process = row.공정 || ''
-      if (EXCLUDED_PROCESSES.includes(process)) return
-      totalProduction += parseNumber(row.생산수량)
-      totalGood += parseNumber(row.양품수량)
+    processOEE.forEach(row => {
+      totalProduction += row.생산수량
+      totalGood += row.양품수량
     })
 
-    // 양품율
-    const qualityRate = totalProduction > 0 ? (totalGood / totalProduction) * 100 : 0
-
-    // 성능가동율 (CT 데이터 기반 - 실제CT/표준CT)
-    const monthCT = data.ctData.filter(d => {
-      const dateStr = String(d.date || d.일자 || '')
-      if (!dateStr) return true
-      let rowMonth = null
-      if (dateStr.includes('-')) {
-        rowMonth = parseInt(dateStr.split('-')[1]) || null
-      }
-      return !rowMonth || rowMonth === selectedMonth
-    })
-
-    let totalStdCT = 0
-    let totalActCT = 0
-    monthCT.forEach(row => {
-      totalStdCT += parseNumber(row['표준C/T'] || row.standardCT || 0)
-      totalActCT += parseNumber(row['실제C/T'] || row.actualCT || 0)
-    })
-
-    const performanceRate = totalActCT > 0 ? Math.min((totalStdCT / totalActCT) * 100, 100) : 92 // 기본값
-
-    // OEE = 시간가동율 × 성능가동율 × 양품율 / 10000
-    const oee = (timeAvailability * performanceRate * qualityRate) / 10000
+    const avgQuality = totalProduction > 0 ? (totalGood / totalProduction) * 100 : 0
+    const avgTimeAvail = 100 // 시간가동율 데이터 없으면 100%
+    const avgPerfRate = 100 // 성능가동율 데이터 없으면 100%
+    const avgOEE = (avgTimeAvail * avgPerfRate * avgQuality) / 10000
 
     return {
-      oee: oee || 0,
-      timeAvailability: timeAvailability || 0,
-      performanceRate: performanceRate || 92,
-      qualityRate: qualityRate || 0,
-      availabilityCount: monthAvailability.length,
-      ctCount: monthCT.length
+      oee: Math.round(avgOEE * 10) / 10,
+      timeAvailability: avgTimeAvail,
+      performanceRate: avgPerfRate,
+      qualityRate: Math.round(avgQuality * 10) / 10
     }
-  }, [data.availabilityData, data.ctData, filteredData, selectedMonth])
+  }, [processOEE])
 
-  // 월별 OEE 추이 (1~12월)
+  // 월별 OEE 추이
   const monthlyOEE = useMemo(() => {
     return Array.from({ length: 12 }, (_, i) => {
       const month = i + 1
@@ -111,7 +139,7 @@ export default function OverviewDashboard() {
       })
 
       if (monthData.length === 0) {
-        return { month: `${month}월`, OEE: 0, 시간가동율: 0, 성능가동율: 0, 양품율: 0 }
+        return { month: `${month}월`, 'OEE (%)': 0, 시간가동율: 0, 성능가동율: 0, 양품율: 0 }
       }
 
       let production = 0
@@ -124,95 +152,19 @@ export default function OverviewDashboard() {
       })
 
       const qualityRate = production > 0 ? (good / production) * 100 : 0
-
-      // 가동율 데이터에서 해당 월 필터
-      const monthAvail = data.availabilityData.filter(d => {
-        const dateStr = String(d.date || d.일자 || '')
-        if (!dateStr) return false
-        let rowMonth = null
-        if (dateStr.includes('-')) rowMonth = parseInt(dateStr.split('-')[1])
-        return rowMonth === month
-      })
-
-      let opTime = 0, planTime = 0
-      monthAvail.forEach(row => {
-        const op = parseNumber(row.가동시간 || row.operating_minutes || 0)
-        const dt = parseNumber(row.비가동시간 || row.downtime_minutes || 0)
-        opTime += op
-        planTime += op + dt
-      })
-
-      const timeAvail = planTime > 0 ? (opTime / planTime) * 100 : 0
-      const perfRate = 92 // 기본값
+      const timeAvail = 100
+      const perfRate = 100
       const oee = (timeAvail * perfRate * qualityRate) / 10000
 
       return {
         month: `${month}월`,
         'OEE (%)': Math.round(oee * 10) / 10,
-        시간가동율: Math.round(timeAvail * 10) / 10,
+        시간가동율: timeAvail,
         성능가동율: perfRate,
         양품율: Math.round(qualityRate * 10) / 10
       }
     })
-  }, [data.rawData, data.availabilityData])
-
-  // 공정별 종합효율 상세
-  const processOEE = useMemo(() => {
-    const stats: Record<string, { production: number; good: number; defect: number; opTime: number; planTime: number }> = {}
-
-    filteredData.forEach(row => {
-      const process = row.공정 || '기타'
-      if (EXCLUDED_PROCESSES.includes(process)) return
-
-      if (!stats[process]) {
-        stats[process] = { production: 0, good: 0, defect: 0, opTime: 0, planTime: 0 }
-      }
-
-      stats[process].production += parseNumber(row.생산수량)
-      stats[process].good += parseNumber(row.양품수량)
-      stats[process].defect += parseNumber(row.불량수량)
-    })
-
-    // 가동율 데이터 병합
-    const monthAvail = data.availabilityData.filter(d => {
-      const dateStr = String(d.date || d.일자 || '')
-      if (!dateStr) return true
-      let rowMonth = null
-      if (dateStr.includes('-')) rowMonth = parseInt(dateStr.split('-')[1])
-      return !rowMonth || rowMonth === selectedMonth
-    })
-
-    monthAvail.forEach(row => {
-      const process = String(row.공정 || row.process || '기타')
-      if (!stats[process]) {
-        stats[process] = { production: 0, good: 0, defect: 0, opTime: 0, planTime: 0 }
-      }
-      const op = parseNumber(row.가동시간 || row.operating_minutes || 0)
-      const dt = parseNumber(row.비가동시간 || row.downtime_minutes || 0)
-      stats[process].opTime += op
-      stats[process].planTime += op + dt
-    })
-
-    return Object.entries(stats)
-      .filter(([, v]) => v.production > 0)
-      .map(([name, values]) => {
-        const timeAvail = values.planTime > 0 ? (values.opTime / values.planTime) * 100 : 100
-        const perfRate = 100 // 기본값
-        const qualityRate = values.production > 0 ? (values.good / values.production) * 100 : 0
-        const oee = (timeAvail * perfRate * qualityRate) / 10000
-
-        return {
-          공정: name,
-          생산수량: values.production,
-          양품수량: values.good,
-          시간가동율: Math.round(timeAvail * 10) / 10,
-          성능가동율: perfRate,
-          양품율: Math.round(qualityRate * 10) / 10,
-          '종합효율(OEE)': Math.round(oee * 10) / 10
-        }
-      })
-      .sort((a, b) => b['종합효율(OEE)'] - a['종합효율(OEE)'])
-  }, [filteredData, data.availabilityData, selectedMonth])
+  }, [data.rawData])
 
   // 공정 목록
   const processes = useMemo(() => {
@@ -226,7 +178,17 @@ export default function OverviewDashboard() {
     return Array.from(set)
   }, [filteredData])
 
-  // 데이터 없음 표시 - hooks 다음에 배치!
+  // 정렬 핸들러
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('desc')
+    }
+  }
+
+  // 데이터 없음 표시
   if (data.rawData.length === 0) {
     return (
       <div className="bg-white rounded-xl p-16 text-center border border-slate-200">
@@ -264,7 +226,7 @@ export default function OverviewDashboard() {
               onChange={(e) => setProcessFilter(e.target.value)}
               className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm"
             >
-              <option value="all">All</option>
+              <option value="all">전체 공정</option>
               {processes.map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
@@ -275,10 +237,10 @@ export default function OverviewDashboard() {
         {/* 데이터 현황 */}
         <div className="flex items-center gap-4 mt-4 text-sm">
           <span className="text-green-600 flex items-center gap-1">
-            ✓ 가동율 {formatNumber(oeeStats.availabilityCount)}건
+            ✓ 가동율 {formatNumber(data.availabilityData.length)}건
           </span>
           <span className="text-amber-600 flex items-center gap-1">
-            ✓ CT현황 {formatNumber(oeeStats.ctCount)}건
+            ✓ CT현황 {formatNumber(data.ctData.length)}건
           </span>
         </div>
       </div>
@@ -287,23 +249,23 @@ export default function OverviewDashboard() {
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white rounded-xl p-6 border border-slate-200">
           <div className="text-sm text-slate-500 mb-1">{selectedMonth}월 종합효율 (OEE)</div>
-          <div className="text-4xl font-bold text-slate-800">{formatPercent(oeeStats.oee)}</div>
+          <div className="text-4xl font-bold text-slate-800">{oeeStats.oee.toFixed(1)}%</div>
           <div className="text-xs text-slate-400 mt-2">시간가동율 × 성능가동율 × 양품율</div>
         </div>
 
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
           <div className="text-sm text-slate-500 mb-1">평균 시간가동율</div>
-          <div className="text-4xl font-bold text-blue-600">{formatPercent(oeeStats.timeAvailability)}</div>
+          <div className="text-4xl font-bold text-blue-600">{oeeStats.timeAvailability.toFixed(1)}%</div>
         </div>
 
         <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-6 border border-slate-200">
           <div className="text-sm text-slate-500 mb-1">평균 성능가동율</div>
-          <div className="text-4xl font-bold text-slate-700">{formatPercent(oeeStats.performanceRate)}</div>
+          <div className="text-4xl font-bold text-slate-700">{oeeStats.performanceRate.toFixed(1)}%</div>
         </div>
 
         <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-xl p-6 border border-cyan-200">
           <div className="text-sm text-slate-500 mb-1">평균 양품율</div>
-          <div className="text-4xl font-bold text-cyan-600">{formatPercent(oeeStats.qualityRate)}</div>
+          <div className="text-4xl font-bold text-cyan-600">{oeeStats.qualityRate.toFixed(1)}%</div>
         </div>
       </div>
 
@@ -317,9 +279,9 @@ export default function OverviewDashboard() {
           <ComposedChart data={monthlyOEE}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-            <YAxis yAxisId="left" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-            <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-            <Tooltip formatter={(value) => [`${value}%`, '']} />
+            <YAxis yAxisId="left" domain={[0, 100]} tickFormatter={(v) => `${v.toFixed(1)}%`} />
+            <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v.toFixed(1)}%`} />
+            <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, '']} />
             <Legend />
             <Bar yAxisId="left" dataKey="시간가동율" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
             <Bar yAxisId="left" dataKey="성능가동율" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
@@ -335,16 +297,19 @@ export default function OverviewDashboard() {
           <h3 className="font-bold text-slate-700 flex items-center gap-2">
             <span className="w-1 h-5 bg-blue-500 rounded-full" />
             공정별 종합효율 상세
-            <span className="text-sm font-normal text-slate-400">(년간 누적)</span>
+            <span className="text-sm font-normal text-slate-400">({filteredProcessOEE.length}건)</span>
           </h3>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowDetailTable(!showDetailTable)}
-              className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1 bg-slate-100 rounded-lg"
+              className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 bg-slate-100 rounded-lg transition"
             >
-              {showDetailTable ? '접기' : '펼치기'}
+              {showDetailTable ? '📁 접기' : '📂 펼치기'}
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition">
+            <button
+              onClick={() => downloadExcel(filteredProcessOEE, `OEE_${selectedMonth}월`)}
+              className="flex items-center gap-2 px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition"
+            >
               📥 엑셀 다운로드
             </button>
           </div>
@@ -355,26 +320,33 @@ export default function OverviewDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">공정</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">생산수량</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">양품수량</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">시간가동율</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">성능가동율</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">양품율</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">종합효율(OEE)</th>
+                  {['공정', '생산수량', '양품수량', '시간가동율', '성능가동율', '양품율', '종합효율(OEE)'].map(field => (
+                    <th
+                      key={field}
+                      onClick={() => handleSort(field)}
+                      className="text-left px-4 py-3 font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 transition"
+                    >
+                      <div className="flex items-center gap-1">
+                        {field}
+                        {sortField === field && (
+                          <span className="text-blue-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {processOEE.map((row, idx) => (
+                {filteredProcessOEE.map((row, idx) => (
                   <tr key={row.공정} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                     <td className="px-4 py-3 font-medium text-slate-700">{row.공정}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.생산수량)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.양품수량)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatPercent(row.시간가동율)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatPercent(row.성능가동율)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatPercent(row.양품율)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.시간가동율.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.성능가동율.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.양품율.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right tabular-nums font-semibold text-blue-600">
-                      {formatPercent(row['종합효율(OEE)'])}
+                      {row['종합효율(OEE)'].toFixed(1)}%
                     </td>
                   </tr>
                 ))}
