@@ -59,17 +59,38 @@ const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
 // 차트 색상
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1']
 
-// 필드 값 가져오기 (다양한 필드명 지원)
+// 문자열 정규화 함수 (비교용)
+const normalizeString = (val: unknown): string => {
+  if (val === undefined || val === null) return ''
+  return String(val).trim().toLowerCase().replace(/\s+/g, '')
+}
+
+// 필드 값 가져오기 (다양한 필드명 지원) - 모든 키를 순회
 const getFieldFromPrice = (p: { [key: string]: string | number | undefined }, ...keys: string[]) => {
+  // 먼저 정확한 키 매칭 시도
   for (const key of keys) {
     if (p[key] !== undefined && p[key] !== null && p[key] !== '') {
       return String(p[key]).trim()
     }
   }
+  // 대소문자 무시하고 부분 매칭 시도
+  const pKeys = Object.keys(p)
+  for (const searchKey of keys) {
+    const normalizedSearchKey = normalizeString(searchKey)
+    for (const pKey of pKeys) {
+      if (normalizeString(pKey) === normalizedSearchKey ||
+          normalizeString(pKey).includes(normalizedSearchKey) ||
+          normalizedSearchKey.includes(normalizeString(pKey))) {
+        if (p[pKey] !== undefined && p[pKey] !== null && p[pKey] !== '') {
+          return String(p[pKey]).trim()
+        }
+      }
+    }
+  }
   return ''
 }
 
-// 단가 데이터에서 매칭하는 헬퍼 함수
+// 단가 데이터에서 매칭하는 헬퍼 함수 (개선된 버전)
 const findPriceData = (
   priceData: { [key: string]: string | number | undefined }[],
   itemCode?: string,
@@ -78,39 +99,71 @@ const findPriceData = (
 ) => {
   if (!priceData || priceData.length === 0) return undefined
 
-  const searchCode = itemCode ? String(itemCode).trim() : ''
-  const searchName = itemName ? String(itemName).trim() : ''
-  const searchPN = customerPN ? String(customerPN).trim() : ''
+  const searchCode = normalizeString(itemCode)
+  const searchName = normalizeString(itemName)
+  const searchPN = normalizeString(customerPN)
+
+  // 품목코드 키 후보
+  const codeKeys = ['품목코드', '품번', '품목번호', 'itemCode', 'item_code', 'code', 'ITEM_CODE', 'PART_NO', 'partNo', 'part_no', '부품코드', '자재코드', '제품코드']
+  // 품목명 키 후보
+  const nameKeys = ['품목명', '품명', 'productName', 'product_name', 'name', 'ITEM_NAME', 'PRODUCT', 'itemName', 'item_name', '부품명', '자재명', '제품명']
+  // 고객사 P/N 키 후보
+  const pnKeys = ['고객사 P/N', '고객P/N', '고객사P/N', 'customerPN', 'customer_pn', 'CUST_PN', 'custPN', '고객품번']
 
   return priceData.find(p => {
-    // 품목코드 매칭 (다양한 필드명 지원)
-    const priceItemCode = getFieldFromPrice(p, '품목코드', '품번', '품목번호', 'itemCode', 'item_code', 'code', 'ITEM_CODE', 'PART_NO', 'partNo', 'part_no')
-    if (searchCode && priceItemCode && priceItemCode === searchCode) {
-      return true
+    // 품목코드 매칭
+    if (searchCode) {
+      const priceItemCode = normalizeString(getFieldFromPrice(p, ...codeKeys))
+      if (priceItemCode && priceItemCode === searchCode) {
+        return true
+      }
     }
     // 고객사 P/N 매칭
-    const priceCustPN = getFieldFromPrice(p, '고객사 P/N', '고객P/N', '고객사P/N', 'customerPN', 'customer_pn', 'CUST_PN', 'custPN')
-    if (searchPN && priceCustPN && priceCustPN === searchPN) {
-      return true
+    if (searchPN) {
+      const priceCustPN = normalizeString(getFieldFromPrice(p, ...pnKeys))
+      if (priceCustPN && priceCustPN === searchPN) {
+        return true
+      }
     }
-    // 품목명 매칭 (다양한 필드명 지원)
-    const priceItemName = getFieldFromPrice(p, '품목명', '품명', 'productName', 'product_name', 'name', 'ITEM_NAME', 'PRODUCT', 'itemName', 'item_name')
-    if (searchName && priceItemName && priceItemName === searchName) {
-      return true
+    // 품목명 매칭
+    if (searchName) {
+      const priceItemName = normalizeString(getFieldFromPrice(p, ...nameKeys))
+      if (priceItemName && priceItemName === searchName) {
+        return true
+      }
     }
     return false
   })
 }
 
-// 단가 값 추출 헬퍼 함수
+// 단가 값 추출 헬퍼 함수 (개선된 버전)
 const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
-  // 다양한 필드명에서 단가 찾기 (합계단가 우선!)
-  const priceVal = priceItem.합계단가 || priceItem['합계단가'] ||
-                   priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice ||
-                   priceItem.unit_price || priceItem.PRICE || priceItem.UNIT_PRICE ||
-                   priceItem['단 가'] || priceItem['판매단가'] || priceItem['구매단가'] ||
-                   priceItem.cost || priceItem.COST || 0
-  return parseNumber(priceVal)
+  // 단가 키 후보들
+  const priceKeys = ['합계단가', '단가', '가격', 'price', 'unitPrice', 'unit_price', 'PRICE', 'UNIT_PRICE', '단 가', '판매단가', '구매단가', 'cost', 'COST', '금액', '단위가격']
+
+  // 모든 키를 순회하면서 단가 필드 찾기
+  const allKeys = Object.keys(priceItem)
+
+  // 먼저 정확한 매칭
+  for (const key of priceKeys) {
+    if (priceItem[key] !== undefined && priceItem[key] !== null && priceItem[key] !== '') {
+      return parseNumber(priceItem[key])
+    }
+  }
+
+  // 부분 매칭 시도 (단가가 포함된 필드)
+  for (const key of allKeys) {
+    const lowerKey = key.toLowerCase()
+    if (lowerKey.includes('단가') || lowerKey.includes('price') || lowerKey.includes('금액')) {
+      const val = priceItem[key]
+      if (val !== undefined && val !== null && val !== '') {
+        const numVal = parseNumber(val)
+        if (numVal > 0) return numVal
+      }
+    }
+  }
+
+  return 0
 }
 
 // 단가 매칭 통합 함수
@@ -527,35 +580,72 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
   useMemo(() => {
     if (data.priceData.length > 0) {
       console.log('📋 ========== 단가표 디버그 ==========')
-      console.log('📋 단가표 필드명:', priceFieldInfo.fields)
-      console.log('📋 단가표 샘플 데이터:', priceFieldInfo.sample)
-      // 단가 필드 확인
+      console.log('📋 단가표 전체 필드명:', priceFieldInfo.fields)
       const sample = data.priceData[0]
-      console.log('📋 합계단가 값:', sample.합계단가, sample['합계단가'])
-      console.log('📋 품목코드 값:', sample.품목코드, sample['품목코드'])
+      console.log('📋 단가표 첫번째 행 전체 데이터:')
+      Object.entries(sample).forEach(([key, val]) => {
+        if (key !== 'id' && key !== 'data') {
+          console.log(`   [${key}] = "${val}"`)
+        }
+      })
+
+      // 단가 필드 자동 탐지
+      const priceFieldFound = priceFieldInfo.fields.find(f =>
+        f.includes('단가') || f.includes('금액') || f.toLowerCase().includes('price')
+      )
+      console.log('📋 단가 필드 자동탐지:', priceFieldFound, '값:', sample[priceFieldFound as keyof typeof sample])
+
+      // 품목코드 필드 자동 탐지
+      const codeFieldFound = priceFieldInfo.fields.find(f =>
+        f.includes('품목코드') || f.includes('품번') || f.includes('코드') || f.toLowerCase().includes('code')
+      )
+      console.log('📋 품목코드 필드 자동탐지:', codeFieldFound, '값:', sample[codeFieldFound as keyof typeof sample])
     }
+
     if (data.wipInventoryData.length > 0) {
       console.log('📦 ========== 재고 데이터 디버그 ==========')
       const sampleInv = data.wipInventoryData[0]
-      console.log('📦 재고 데이터 필드명:', Object.keys(sampleInv).filter(k => k !== 'id' && k !== 'data'))
-      console.log('📦 재고 샘플 데이터:', sampleInv)
-      console.log('📦 품목코드 값:', sampleInv.품목코드, sampleInv['품목코드'])
+      const invFields = Object.keys(sampleInv).filter(k => k !== 'id' && k !== 'data')
+      console.log('📦 재고 데이터 전체 필드명:', invFields)
+      console.log('📦 재고 첫번째 행 전체 데이터:')
+      Object.entries(sampleInv).forEach(([key, val]) => {
+        if (key !== 'id' && key !== 'data') {
+          console.log(`   [${key}] = "${val}"`)
+        }
+      })
 
       // 매칭 테스트
       if (data.priceData.length > 0) {
-        const invCode = String(sampleInv.품목코드 || sampleInv['품목코드'] || '').trim()
-        const invName = String(sampleInv.품목명 || sampleInv['품목명'] || '').trim()
-        console.log('🔍 매칭 테스트 - 재고 품목코드:', invCode, '품목명:', invName)
+        // 재고 데이터에서 품목코드 찾기
+        const codeFieldInv = invFields.find(f =>
+          f.includes('품목코드') || f.includes('품번') || f.includes('코드')
+        )
+        const invCode = codeFieldInv ? String(sampleInv[codeFieldInv as keyof typeof sampleInv] || '').trim() : ''
 
-        const matchedPrice = findPriceData(data.priceData, invCode, invName)
+        // 단가표에서 품목코드 찾기
+        const priceFields = Object.keys(data.priceData[0]).filter(k => k !== 'id' && k !== 'data')
+        const codeFieldPrice = priceFields.find(f =>
+          f.includes('품목코드') || f.includes('품번') || f.includes('코드')
+        )
+        const priceCode = codeFieldPrice ? String(data.priceData[0][codeFieldPrice as keyof typeof data.priceData[0]] || '').trim() : ''
+
+        console.log('🔍 ========== 매칭 테스트 ==========')
+        console.log(`🔍 재고 품목코드 필드: [${codeFieldInv}] = "${invCode}"`)
+        console.log(`🔍 단가표 품목코드 필드: [${codeFieldPrice}] = "${priceCode}"`)
+        console.log(`🔍 정규화 후 비교: "${normalizeString(invCode)}" vs "${normalizeString(priceCode)}"`)
+        console.log(`🔍 매칭 결과: ${normalizeString(invCode) === normalizeString(priceCode) ? '✅ 일치' : '❌ 불일치'}`)
+
+        const matchedPrice = findPriceData(data.priceData, invCode, '')
         if (matchedPrice) {
-          console.log('✅ 매칭 성공! 단가:', getPriceValue(matchedPrice))
+          console.log('✅ findPriceData 매칭 성공! 단가:', getPriceValue(matchedPrice))
         } else {
-          console.log('❌ 매칭 실패 - 단가표에서 찾지 못함')
-          // 첫 번째 단가표 품목코드와 비교
-          const priceCode = String(data.priceData[0].품목코드 || data.priceData[0]['품목코드'] || '').trim()
-          console.log('   단가표 첫번째 품목코드:', priceCode)
-          console.log('   일치 여부:', invCode === priceCode)
+          console.log('❌ findPriceData 매칭 실패')
+          // 첫 5개 단가표 품목코드 출력
+          console.log('📋 단가표 품목코드 샘플 (첫 5개):')
+          data.priceData.slice(0, 5).forEach((p, i) => {
+            const code = codeFieldPrice ? p[codeFieldPrice as keyof typeof p] : ''
+            console.log(`   ${i + 1}. "${code}"`)
+          })
         }
       }
     }

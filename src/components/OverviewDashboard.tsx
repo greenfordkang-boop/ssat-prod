@@ -17,16 +17,38 @@ import {
 import { formatNumber, parseNumber, CHART_COLORS, EXCLUDED_PROCESSES } from '@/lib/utils'
 
 // 필드 값 가져오기 (다양한 필드명 지원)
+// 문자열 정규화 함수 (비교용)
+const normalizeString = (val: unknown): string => {
+  if (val === undefined || val === null) return ''
+  return String(val).trim().toLowerCase().replace(/\s+/g, '')
+}
+
+// 필드 값 가져오기 (다양한 필드명 지원) - 모든 키를 순회
 const getFieldFromPrice = (p: { [key: string]: string | number | undefined }, ...keys: string[]) => {
+  // 먼저 정확한 키 매칭 시도
   for (const key of keys) {
     if (p[key] !== undefined && p[key] !== null && p[key] !== '') {
       return String(p[key]).trim()
     }
   }
+  // 대소문자 무시하고 부분 매칭 시도
+  const pKeys = Object.keys(p)
+  for (const searchKey of keys) {
+    const normalizedSearchKey = normalizeString(searchKey)
+    for (const pKey of pKeys) {
+      if (normalizeString(pKey) === normalizedSearchKey ||
+          normalizeString(pKey).includes(normalizedSearchKey) ||
+          normalizedSearchKey.includes(normalizeString(pKey))) {
+        if (p[pKey] !== undefined && p[pKey] !== null && p[pKey] !== '') {
+          return String(p[pKey]).trim()
+        }
+      }
+    }
+  }
   return ''
 }
 
-// 단가 데이터에서 매칭하는 헬퍼 함수
+// 단가 데이터에서 매칭하는 헬퍼 함수 (개선된 버전)
 const findPriceData = (
   priceData: { [key: string]: string | number | undefined }[],
   itemCode?: string,
@@ -34,33 +56,61 @@ const findPriceData = (
 ) => {
   if (!priceData || priceData.length === 0) return undefined
 
-  const searchCode = itemCode ? String(itemCode).trim() : ''
-  const searchName = itemName ? String(itemName).trim() : ''
+  const searchCode = normalizeString(itemCode)
+  const searchName = normalizeString(itemName)
+
+  // 품목코드 키 후보
+  const codeKeys = ['품목코드', '품번', '품목번호', 'itemCode', 'item_code', 'code', 'ITEM_CODE', 'PART_NO', 'partNo', 'part_no', '부품코드', '자재코드', '제품코드']
+  // 품목명 키 후보
+  const nameKeys = ['품목명', '품명', 'productName', 'product_name', 'name', 'ITEM_NAME', 'PRODUCT', 'itemName', 'item_name', '부품명', '자재명', '제품명']
 
   return priceData.find(p => {
-    // 품목코드 매칭 (다양한 필드명 지원)
-    const priceItemCode = getFieldFromPrice(p, '품목코드', '품번', '품목번호', 'itemCode', 'item_code', 'code', 'ITEM_CODE', 'PART_NO', 'partNo', 'part_no')
-    if (searchCode && priceItemCode && priceItemCode === searchCode) {
-      return true
+    // 품목코드 매칭
+    if (searchCode) {
+      const priceItemCode = normalizeString(getFieldFromPrice(p, ...codeKeys))
+      if (priceItemCode && priceItemCode === searchCode) {
+        return true
+      }
     }
-    // 품목명 매칭 (다양한 필드명 지원)
-    const priceItemName = getFieldFromPrice(p, '품목명', '품명', 'productName', 'product_name', 'name', 'ITEM_NAME', 'PRODUCT', 'itemName', 'item_name')
-    if (searchName && priceItemName && priceItemName === searchName) {
-      return true
+    // 품목명 매칭
+    if (searchName) {
+      const priceItemName = normalizeString(getFieldFromPrice(p, ...nameKeys))
+      if (priceItemName && priceItemName === searchName) {
+        return true
+      }
     }
     return false
   })
 }
 
-// 단가 값 추출 헬퍼 함수
+// 단가 값 추출 헬퍼 함수 (개선된 버전)
 const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
-  // 합계단가 우선 적용!
-  const priceVal = priceItem.합계단가 || priceItem['합계단가'] ||
-                   priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice ||
-                   priceItem.unit_price || priceItem.PRICE || priceItem.UNIT_PRICE ||
-                   priceItem['단 가'] || priceItem['판매단가'] || priceItem['구매단가'] ||
-                   priceItem.cost || priceItem.COST || 0
-  return parseNumber(priceVal)
+  // 단가 키 후보들
+  const priceKeys = ['합계단가', '단가', '가격', 'price', 'unitPrice', 'unit_price', 'PRICE', 'UNIT_PRICE', '단 가', '판매단가', '구매단가', 'cost', 'COST', '금액', '단위가격']
+
+  // 모든 키를 순회하면서 단가 필드 찾기
+  const allKeys = Object.keys(priceItem)
+
+  // 먼저 정확한 매칭
+  for (const key of priceKeys) {
+    if (priceItem[key] !== undefined && priceItem[key] !== null && priceItem[key] !== '') {
+      return parseNumber(priceItem[key])
+    }
+  }
+
+  // 부분 매칭 시도 (단가가 포함된 필드)
+  for (const key of allKeys) {
+    const lowerKey = key.toLowerCase()
+    if (lowerKey.includes('단가') || lowerKey.includes('price') || lowerKey.includes('금액')) {
+      const val = priceItem[key]
+      if (val !== undefined && val !== null && val !== '') {
+        const numVal = parseNumber(val)
+        if (numVal > 0) return numVal
+      }
+    }
+  }
+
+  return 0
 }
 
 // 엑셀 다운로드 함수
