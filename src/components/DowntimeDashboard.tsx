@@ -14,7 +14,10 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  ComposedChart,
+  Line,
+  LabelList
 } from 'recharts'
 
 const COLORS = [
@@ -201,13 +204,14 @@ export default function DowntimeDashboard() {
 
     return Array.from(equipMap.entries())
       .map(([name, data]) => ({
-        name: name.length > 10 ? name.slice(0, 10) + '...' : name,
+        name: name.length > 15 ? name.slice(0, 15) + '...' : name,
+        fullName: name,
         가동시간: Math.round(data.total - data.downtime),
         비가동시간: Math.round(data.downtime),
         비가동율: data.total > 0 ? Math.round((data.downtime / data.total) * 1000) / 10 : 0
       }))
-      .sort((a, b) => b.비가동율 - a.비가동율)
-      .slice(0, 10)
+      .sort((a, b) => b.비가동시간 - a.비가동시간) // 비가동시간 큰 순으로 정렬
+      .slice(0, 12)
   }, [filteredData])
 
   // 총 비가동시간 계산
@@ -323,12 +327,21 @@ export default function DowntimeDashboard() {
           </h3>
           {downtimeByReason.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={downtimeByReason.slice(0, 8)} layout="vertical">
+              <BarChart data={downtimeByReason.slice(0, 8)} layout="vertical" margin={{ right: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis type="number" tickFormatter={(v) => formatNumber(v)} />
-                <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12 }} />
+                <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(value) => formatNumber(value as number) + '분'} />
-                <Bar dataKey="value" fill="#fca5a5" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" fill="#fca5a5" radius={[0, 4, 4, 0]}>
+                  <LabelList
+                    dataKey="value"
+                    position="right"
+                    fill="#b91c1c"
+                    fontSize={10}
+                    fontWeight="bold"
+                    formatter={(v) => `${formatNumber(Number(v))}분`}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -344,20 +357,81 @@ export default function DowntimeDashboard() {
         <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
           <span className="w-1 h-5 bg-amber-500 rounded-full" />
           설비별 가동/비가동 현황
+          <span className="text-xs font-normal text-slate-400 ml-2">(비가동시간 순 정렬)</span>
         </h3>
         {downtimeByEquipment.length > 0 ? (
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={downtimeByEquipment}>
+          <ResponsiveContainer width="100%" height={450}>
+            <ComposedChart data={downtimeByEquipment} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={80} />
-              <YAxis tickFormatter={(v) => formatNumber(v)} />
-              <Tooltip
-                formatter={(value, name) => [formatNumber(value as number) + '분', name]}
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 10 }}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+                interval={0}
               />
-              <Legend />
-              <Bar dataKey="가동시간" stackId="a" fill="#6ee7b7" />
-              <Bar dataKey="비가동시간" stackId="a" fill="#fca5a5" />
-            </BarChart>
+              <YAxis
+                yAxisId="left"
+                tickFormatter={(v) => formatNumber(v)}
+                label={{ value: '시간(분)', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11 } }}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                domain={[0, 100]}
+                tickFormatter={(v) => `${v}%`}
+                label={{ value: '비가동율(%)', angle: 90, position: 'insideRight', style: { textAnchor: 'middle', fontSize: 11 } }}
+              />
+              <Tooltip
+                formatter={(value, name) => {
+                  if (name === '비가동율') return [`${(value as number).toFixed(1)}%`, name]
+                  return [formatNumber(value as number) + '분', name]
+                }}
+                labelFormatter={(label) => {
+                  const item = downtimeByEquipment.find(d => d.name === label)
+                  return item?.fullName || label
+                }}
+              />
+              <Legend verticalAlign="top" height={36} />
+              <Bar yAxisId="left" dataKey="가동시간" stackId="a" fill="#6ee7b7" name="가동시간">
+                <LabelList
+                  dataKey="가동시간"
+                  position="inside"
+                  fill="#047857"
+                  fontSize={9}
+                  formatter={(v) => Number(v) > 0 ? formatNumber(Number(v)) : ''}
+                />
+              </Bar>
+              <Bar yAxisId="left" dataKey="비가동시간" stackId="a" fill="#fca5a5" name="비가동시간">
+                <LabelList
+                  dataKey="비가동시간"
+                  position="inside"
+                  fill="#b91c1c"
+                  fontSize={9}
+                  formatter={(v) => Number(v) > 0 ? formatNumber(Number(v)) : ''}
+                />
+              </Bar>
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="비가동율"
+                stroke="#f59e0b"
+                strokeWidth={3}
+                dot={{ fill: '#f59e0b', strokeWidth: 2, r: 5 }}
+                activeDot={{ r: 7 }}
+                name="비가동율"
+              >
+                <LabelList
+                  dataKey="비가동율"
+                  position="top"
+                  fill="#d97706"
+                  fontSize={10}
+                  fontWeight="bold"
+                  formatter={(v) => `${Number(v).toFixed(1)}%`}
+                />
+              </Line>
+            </ComposedChart>
           </ResponsiveContainer>
         ) : (
           <div className="h-64 flex items-center justify-center text-slate-400">
