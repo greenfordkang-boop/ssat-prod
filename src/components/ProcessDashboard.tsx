@@ -99,9 +99,14 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     let workTime = 0
 
     processData.forEach(row => {
-      production += parseNumber(row.생산수량)
-      good += parseNumber(row.양품수량)
-      defect += parseNumber(row.불량수량)
+      const prod = parseNumber(row.생산수량)
+      const goodQty = parseNumber(row.양품수량)
+      // 불량수량: 명시적 필드가 있으면 사용, 없으면 생산-양품으로 계산
+      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+
+      production += prod
+      good += goodQty
+      defect += defectQty > 0 ? defectQty : 0
       workTime += parseNumber(row['작업시간(분)'])
     })
 
@@ -123,9 +128,13 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       const day = (row.생산일자 || '').split('-')[2] || ''
       if (!day) return
 
+      const prod = parseNumber(row.생산수량)
+      const goodQty = parseNumber(row.양품수량)
+      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+
       if (!daily[day]) daily[day] = { production: 0, defect: 0 }
-      daily[day].production += parseNumber(row.생산수량)
-      daily[day].defect += parseNumber(row.불량수량)
+      daily[day].production += prod
+      daily[day].defect += defectQty > 0 ? defectQty : 0
     })
 
     return Object.entries(daily)
@@ -144,9 +153,13 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
     processData.forEach(row => {
       const name = row['설비(라인)명'] || '기타'
+      const prod = parseNumber(row.생산수량)
+      const goodQty = parseNumber(row.양품수량)
+      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+
       if (!equip[name]) equip[name] = { production: 0, defect: 0, time: 0 }
-      equip[name].production += parseNumber(row.생산수량)
-      equip[name].defect += parseNumber(row.불량수량)
+      equip[name].production += prod
+      equip[name].defect += defectQty > 0 ? defectQty : 0
       equip[name].time += parseNumber(row['작업시간(분)'])
     })
 

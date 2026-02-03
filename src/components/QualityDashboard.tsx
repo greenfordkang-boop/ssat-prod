@@ -93,12 +93,13 @@ export default function QualityDashboard() {
 
       const production = parseNumber(row.생산수량)
       const good = parseNumber(row.양품수량)
-      const defect = parseNumber(row.불량수량)
+      // 불량수량: 명시적 필드가 있으면 사용, 없으면 생산-양품으로 계산
+      const defect = parseNumber(row.불량수량) || (production - good)
       const scrap = parseNumber(row.폐기수량)
 
       totalProduction += production
       totalGood += good
-      totalDefect += defect
+      totalDefect += defect > 0 ? defect : 0
       totalScrap += scrap
 
       // 불량금액 계산 (단가 데이터가 있으면 사용)
@@ -106,7 +107,7 @@ export default function QualityDashboard() {
         p.품목코드 === row.품목코드 || p.품목명 === row.품목명
       )
       if (price) {
-        totalDefectAmount += defect * parseNumber(price.단가 || price.price || 0)
+        totalDefectAmount += (defect > 0 ? defect : 0) * parseNumber(price.단가 || price.price || 0)
       }
     })
 
@@ -129,13 +130,17 @@ export default function QualityDashboard() {
       const process = row.공정 || '기타'
       if (EXCLUDED_PROCESSES.includes(process)) return
 
+      const prod = parseNumber(row.생산수량)
+      const goodQty = parseNumber(row.양품수량)
+      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+
       if (!stats[process]) {
         stats[process] = { production: 0, good: 0, defect: 0, scrap: 0 }
       }
 
-      stats[process].production += parseNumber(row.생산수량)
-      stats[process].good += parseNumber(row.양품수량)
-      stats[process].defect += parseNumber(row.불량수량)
+      stats[process].production += prod
+      stats[process].good += goodQty
+      stats[process].defect += defectQty > 0 ? defectQty : 0
       stats[process].scrap += parseNumber(row.폐기수량)
     })
 
@@ -163,6 +168,10 @@ export default function QualityDashboard() {
       const process = row.공정 || ''
       if (EXCLUDED_PROCESSES.includes(process)) return
 
+      const prod = parseNumber(row.생산수량)
+      const goodQty = parseNumber(row.양품수량)
+      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+
       if (!stats[key]) {
         stats[key] = {
           product: key,
@@ -174,16 +183,16 @@ export default function QualityDashboard() {
         }
       }
 
-      stats[key].production += parseNumber(row.생산수량)
-      stats[key].good += parseNumber(row.양품수량)
-      stats[key].defect += parseNumber(row.불량수량)
+      stats[key].production += prod
+      stats[key].good += goodQty
+      stats[key].defect += defectQty > 0 ? defectQty : 0
 
       // 불량금액
       const price = data.priceData.find(p =>
         p.품목코드 === row.품목코드 || p.품목명 === row.품목명
       )
       if (price) {
-        stats[key].defectAmount += parseNumber(row.불량수량) * parseNumber(price.단가 || price.price || 0)
+        stats[key].defectAmount += (defectQty > 0 ? defectQty : 0) * parseNumber(price.단가 || price.price || 0)
       }
     })
 

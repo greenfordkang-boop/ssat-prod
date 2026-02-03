@@ -55,13 +55,17 @@ export default function OverviewDashboard() {
       const process = row.공정 || '기타'
       if (EXCLUDED_PROCESSES.includes(process)) return
 
+      const prod = parseNumber(row.생산수량)
+      const goodQty = parseNumber(row.양품수량)
+      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+
       if (!stats[process]) {
         stats[process] = { production: 0, good: 0, defect: 0 }
       }
 
-      stats[process].production += parseNumber(row.생산수량)
-      stats[process].good += parseNumber(row.양품수량)
-      stats[process].defect += parseNumber(row.불량수량)
+      stats[process].production += prod
+      stats[process].good += goodQty
+      stats[process].defect += defectQty > 0 ? defectQty : 0
     })
 
     return Object.entries(stats)
