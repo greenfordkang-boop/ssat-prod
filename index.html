@@ -7674,27 +7674,25 @@
           const newMonths = getMonthsFromData(newData);
           const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
 
-          // Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
-          if (supabaseConnected) {
-            const supabaseData = await loadFromSupabase('production_data');
-            if (supabaseData && supabaseData.length > 0) {
-              state.rawData = supabaseData;
-              console.log('📥 Supabase에서 최신 생산 데이터 로드:', supabaseData.length + '건');
-            }
-          }
-
-          // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
+          // 🔄 업로드 시 Supabase 데이터 완전 교체 방식
+          // 기존 로컬 데이터에서 해당 월만 제거하고 새 데이터 추가
           const filteredExisting = removeMonthsFromData(state.rawData, newMonths);
           state.rawData = [...filteredExisting, ...newData];
+
+          console.log('📊 업로드 결과: 기존 ' + filteredExisting.length + '건 + 신규 ' + newData.length + '건 = 총 ' + state.rawData.length + '건');
 
           saveToStorage(state.rawData);
           render();
           setTimeout(() => { createCharts(); initTableSort(); }, 100);
           alert(`${monthNames} 데이터 ${newData.length}건이 저장되었습니다.\n(총 ${state.rawData.length}건)`);
-          // Supabase 동기화 및 로그 기록
+          // Supabase 완전 교체 (기존 삭제 후 새로 저장)
           if (supabaseConnected) {
+            console.log('🗑️ Supabase production_data 삭제 중...');
+            await supabaseClient.from('production_data').delete().gte('id', 0);
+            console.log('📤 Supabase에 새 데이터 저장 중...');
             await saveToSupabase('production_data', state.rawData);
             await logAccess('data_upload', { type: 'production_data', count: newData.length, filename: file.name });
+            console.log('✅ Supabase 동기화 완료: ' + state.rawData.length + '건');
           }
         } finally {
           // 🔴 업로드 완료 - 동기화 재개
