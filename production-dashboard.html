@@ -556,6 +556,7 @@
     }
 
     // Supabase에서 데이터 새로고침 (UI 업데이트 포함)
+    // 데이터 손실 방지: Supabase 데이터가 로컬보다 많을 때만 업데이트
     async function refreshDataFromSupabase() {
       if (!supabaseConnected) return;
 
@@ -572,16 +573,27 @@
         let dataChanged = false;
 
         for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
-          const data = await loadFromSupabase(tableName);
-          if (data && data.length > 0) {
-            // 데이터가 변경되었는지 확인 (길이 비교)
-            if (!state[stateKey] || state[stateKey].length !== data.length) {
-              dataChanged = true;
-            }
-            state[stateKey] = data;
+          const supabaseData = await loadFromSupabase(tableName);
+          const localData = state[stateKey] || [];
 
-            // localStorage에도 저장
-            updateLocalStorage(stateKey, data);
+          if (supabaseData && supabaseData.length > 0) {
+            // 🔒 데이터 손실 방지: Supabase 데이터가 로컬보다 많거나 같을 때만 업데이트
+            if (supabaseData.length >= localData.length) {
+              if (supabaseData.length !== localData.length) {
+                dataChanged = true;
+                console.log(`📥 ${tableName}: Supabase(${supabaseData.length}) >= Local(${localData.length}) → 업데이트`);
+              }
+              state[stateKey] = supabaseData;
+              updateLocalStorage(stateKey, supabaseData);
+            } else {
+              // 로컬 데이터가 더 많으면 Supabase에 업로드
+              console.log(`📤 ${tableName}: Local(${localData.length}) > Supabase(${supabaseData.length}) → Supabase에 업로드`);
+              await saveToSupabase(tableName, localData);
+            }
+          } else if (localData.length > 0) {
+            // Supabase에 데이터 없고 로컬에 있으면 업로드
+            console.log(`📤 ${tableName}: Supabase 비어있음 → 로컬 데이터 업로드`);
+            await saveToSupabase(tableName, localData);
           }
         }
 
