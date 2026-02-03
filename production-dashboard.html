@@ -761,7 +761,7 @@
 
     // Supabase에서 데이터 로드 (최대 10,000건)
     // JSONB로 저장해야 하는 테이블 (동적 컬럼 또는 중첩 객체 포함)
-    const JSONB_TABLES = ['detail_data', 'availability_data', 'price_data', 'ct_data'];
+    const JSONB_TABLES = ['detail_data', 'availability_data', 'price_data'];
 
     async function loadFromSupabase(tableName) {
       if (!supabaseConnected) return null;
