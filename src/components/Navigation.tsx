@@ -218,7 +218,7 @@ export default function Navigation({
                     : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
                 }`}
               >
-                재공현황
+                재고현황
               </button>
               <button
                 onClick={() => onSubMenuChange('price')}

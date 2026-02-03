@@ -260,9 +260,9 @@ export default function FileUploadPage() {
     },
     {
       id: 'wip-inventory',
-      name: '재공재고금액',
-      description: 'WIP Inventory',
-      icon: '💰',
+      name: '창고별재고현황',
+      description: 'Warehouse Inventory',
+      icon: '🏭',
       color: 'teal',
       borderColor: 'hover:border-teal-300',
       bgColor: 'bg-teal-500 hover:bg-teal-600',
@@ -302,7 +302,7 @@ export default function FileUploadPage() {
     { name: 'CT - 도장', icon: '🎨', count: getCTCountByProcess('도장'), color: 'sky', dataKey: 'ctData' as const, process: '도장' },
     { name: 'CT - 조립', icon: '🔧', count: getCTCountByProcess('조립'), color: 'violet', dataKey: 'ctData' as const, process: '조립' },
     { name: '조립자재불량', icon: '⚠️', count: data.materialDefectData.length, color: 'rose', dataKey: 'materialDefectData' as const },
-    { name: '재공재고금액', icon: '💰', count: data.wipInventoryData.length, color: 'teal', dataKey: 'wipInventoryData' as const },
+    { name: '창고별재고현황', icon: '🏭', count: data.wipInventoryData.length, color: 'teal', dataKey: 'wipInventoryData' as const },
     { name: '불량수리현황', icon: '🔨', count: data.repairStatusData.length, color: 'indigo', dataKey: 'repairStatusData' as const },
     { name: '검포장현황', icon: '📦', count: data.packagingStatusData.length, color: 'purple', dataKey: 'packagingStatusData' as const },
     { name: '부품단가표', icon: '💰', count: data.priceData.length, color: 'amber', dataKey: 'priceData' as const }
