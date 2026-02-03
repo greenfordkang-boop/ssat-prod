@@ -760,11 +760,18 @@
     }
 
     // Supabase에서 데이터 로드 (최대 10,000건)
+    // JSONB로 저장해야 하는 테이블 (동적 컬럼 또는 중첩 객체 포함)
+    const JSONB_TABLES = ['detail_data', 'availability_data', 'price_data', 'ct_data'];
+
     async function loadFromSupabase(tableName) {
       if (!supabaseConnected) return null;
       try {
         const { data, error } = await supabase.from(tableName).select('*').limit(10000);
         if (error) throw error;
+        // JSONB 테이블은 data 컬럼에서 추출
+        if (JSONB_TABLES.includes(tableName)) {
+          return data.map(row => row.data);
+        }
         return data.map(toCamelCase);
       } catch (e) {
         console.error(`Supabase 로드 실패 (${tableName}):`, e);
@@ -773,21 +780,27 @@
     }
 
     // Supabase에 데이터 저장 (전체 교체, 배치 처리)
+
     async function saveToSupabase(tableName, data) {
       if (!supabaseConnected || !data || data.length === 0) return false;
       try {
         // 기존 데이터 삭제
         await supabase.from(tableName).delete().neq('id', 0);
 
-        // 새 데이터 삽입
-        const snakeData = data.map(toSnakeCase);
+        // JSONB 테이블은 data 컬럼에 전체 객체 저장
+        let insertData;
+        if (JSONB_TABLES.includes(tableName)) {
+          insertData = data.map(item => ({ data: item }));
+        } else {
+          insertData = data.map(toSnakeCase);
+        }
 
         // 배치 처리 (Supabase는 한 번에 1000건 제한)
         const BATCH_SIZE = 500;
-        const totalBatches = Math.ceil(snakeData.length / BATCH_SIZE);
+        const totalBatches = Math.ceil(insertData.length / BATCH_SIZE);
 
-        for (let i = 0; i < snakeData.length; i += BATCH_SIZE) {
-          const batch = snakeData.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < insertData.length; i += BATCH_SIZE) {
+          const batch = insertData.slice(i, i + BATCH_SIZE);
           const { error } = await supabase.from(tableName).insert(batch);
           if (error) throw error;
           const batchNum = Math.floor(i / BATCH_SIZE) + 1;

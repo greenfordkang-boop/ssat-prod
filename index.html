@@ -1024,7 +1024,8 @@
     };
 
     // JSONB로 저장해야 하는 테이블 (동적 컬럼 또는 중첩 객체 포함)
-    const JSONB_TABLES = ['detail_data', 'availability_data', 'price_data'];
+    // 🔴 ct_data 추가: month 필드 등 동적 필드 저장을 위해
+    const JSONB_TABLES = ['detail_data', 'availability_data', 'price_data', 'ct_data'];
 
     // 필드명 변환 (camelCase → snake_case) - 중첩 객체는 JSON 문자열로 변환
     function toSnakeCase(obj) {
