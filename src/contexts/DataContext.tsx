@@ -152,9 +152,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 전체 데이터 새로고침
+  // 전체 데이터 새로고침 (수동 호출용)
   const refreshData = useCallback(async () => {
-    if (!user) return
+    if (!user || loading) return // 이미 로딩 중이면 중복 호출 방지
 
     setLoading(true)
     try {
@@ -163,7 +163,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
         const loaded = await loadFromSupabase(tableName)
         results[stateKey as keyof DashboardData] = loaded as never
-        console.log(`📥 ${tableName}: ${loaded.length}건 로드`)
+        console.log(`🔄 ${tableName}: ${loaded.length}건 새로고침`)
       }
 
       setData(prev => ({ ...prev, ...results }))
@@ -172,7 +172,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading])
 
   // 데이터 업로드 (핵심 함수 - 충돌 방지)
   const uploadData = async (
@@ -280,41 +281,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return match ? parseInt(match[1], 10) : 0
   }
 
-  // 실시간 동기화 (Realtime 구독)
+  // 초기 데이터 로드 (user 변경 시에만)
   useEffect(() => {
-    if (!user) return
+    let isMounted = true
 
-    const channel = supabase
-      .channel('db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_data' }, () => {
-        console.log('🔔 production_data 변경 감지')
-        refreshData()
-      })
-      .subscribe()
+    const loadInitialData = async () => {
+      if (!user || loading) return
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [user, refreshData])
+      setLoading(true)
+      try {
+        const results: Partial<DashboardData> = {}
 
-  // 초기 데이터 로드
-  useEffect(() => {
-    if (user) {
-      refreshData()
-    }
-  }, [user, refreshData])
+        for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
+          if (!isMounted) return
+          const loaded = await loadFromSupabase(tableName)
+          results[stateKey as keyof DashboardData] = loaded as never
+          console.log(`📥 ${tableName}: ${loaded.length}건 로드`)
+        }
 
-  // 페이지 포커스 시 동기화
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && user) {
-        refreshData()
+        if (isMounted) {
+          setData(prev => ({ ...prev, ...results }))
+        }
+      } catch (e) {
+        console.error('데이터 로드 실패:', e)
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [user, refreshData])
+    loadInitialData()
+
+    return () => {
+      isMounted = false
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]) // user만 dependency - 무한 루프 방지
 
   return (
     <DataContext.Provider value={{
