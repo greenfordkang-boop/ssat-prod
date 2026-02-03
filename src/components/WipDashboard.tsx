@@ -324,7 +324,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
       })
     }
 
-    return result.slice(0, 100)
+    return result // 전체 표시 (제한 없음)
   }, [data.priceData, priceFilter, priceSort])
 
   // 컬럼 추출
@@ -335,7 +335,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
 
   const priceColumns = useMemo(() => {
     if (data.priceData.length === 0) return []
-    return Object.keys(data.priceData[0]).filter(key => key !== 'id' && key !== 'data').slice(0, 10)
+    return Object.keys(data.priceData[0]).filter(key => key !== 'id' && key !== 'data')
   }, [data.priceData])
 
   // 디버그: 단가표 필드명 확인
@@ -348,13 +348,38 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
   // 콘솔에 디버그 정보 출력
   useMemo(() => {
     if (data.priceData.length > 0) {
+      console.log('📋 ========== 단가표 디버그 ==========')
       console.log('📋 단가표 필드명:', priceFieldInfo.fields)
       console.log('📋 단가표 샘플 데이터:', priceFieldInfo.sample)
+      // 단가 필드 확인
+      const sample = data.priceData[0]
+      console.log('📋 합계단가 값:', sample.합계단가, sample['합계단가'])
+      console.log('📋 품목코드 값:', sample.품목코드, sample['품목코드'])
     }
     if (data.wipInventoryData.length > 0) {
+      console.log('📦 ========== 재고 데이터 디버그 ==========')
       const sampleInv = data.wipInventoryData[0]
       console.log('📦 재고 데이터 필드명:', Object.keys(sampleInv).filter(k => k !== 'id' && k !== 'data'))
       console.log('📦 재고 샘플 데이터:', sampleInv)
+      console.log('📦 품목코드 값:', sampleInv.품목코드, sampleInv['품목코드'])
+
+      // 매칭 테스트
+      if (data.priceData.length > 0) {
+        const invCode = String(sampleInv.품목코드 || sampleInv['품목코드'] || '').trim()
+        const invName = String(sampleInv.품목명 || sampleInv['품목명'] || '').trim()
+        console.log('🔍 매칭 테스트 - 재고 품목코드:', invCode, '품목명:', invName)
+
+        const matchedPrice = findPriceData(data.priceData, invCode, invName)
+        if (matchedPrice) {
+          console.log('✅ 매칭 성공! 단가:', getPriceValue(matchedPrice))
+        } else {
+          console.log('❌ 매칭 실패 - 단가표에서 찾지 못함')
+          // 첫 번째 단가표 품목코드와 비교
+          const priceCode = String(data.priceData[0].품목코드 || data.priceData[0]['품목코드'] || '').trim()
+          console.log('   단가표 첫번째 품목코드:', priceCode)
+          console.log('   일치 여부:', invCode === priceCode)
+        }
+      }
     }
   }, [data.priceData, data.wipInventoryData, priceFieldInfo])
 
@@ -656,9 +681,9 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                   ))}
                 </tbody>
               </table>
-              {data.priceData.length > 100 && (
+              {data.priceData.length > 500 && (
                 <p className="text-center text-sm text-gray-500 mt-4">
-                  총 {formatNumber(data.priceData.length)}건 중 100건 표시
+                  총 {formatNumber(data.priceData.length)}건 표시
                 </p>
               )}
             </div>
