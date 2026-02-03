@@ -60,34 +60,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 세션 체크
   useEffect(() => {
+    let isMounted = true
+
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        console.log('세션 체크 시작...')
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+        if (sessionError) {
+          console.error('세션 가져오기 실패:', sessionError)
+          if (isMounted) setLoading(false)
+          return
+        }
+
         if (session?.user) {
+          console.log('세션 발견:', session.user.email)
           const userProfile = await loadProfile(session.user.id)
 
           // 비활성화 또는 미승인 체크 (관리자 제외)
           if (session.user.email !== ADMIN_EMAIL) {
             if (!userProfile || !userProfile.approved || !userProfile.is_active) {
+              console.log('사용자 미승인 또는 비활성화')
               await supabase.auth.signOut()
-              setUser(null)
-              setProfile(null)
-              setLoading(false)
+              if (isMounted) {
+                setUser(null)
+                setProfile(null)
+                setLoading(false)
+              }
               return
             }
           }
 
-          setUser(session.user)
-          setProfile(userProfile)
+          if (isMounted) {
+            setUser(session.user)
+            setProfile(userProfile)
+          }
+        } else {
+          console.log('세션 없음')
         }
       } catch (e) {
         console.error('세션 체크 실패:', e)
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          console.log('로딩 완료')
+          setLoading(false)
+        }
       }
     }
 
+    // 5초 타임아웃 - 세션 체크가 오래 걸리면 강제로 로딩 종료
+    const timeout = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn('세션 체크 타임아웃')
+        setLoading(false)
+      }
+    }, 5000)
+
     checkSession()
+
+    return () => {
+      isMounted = false
+      clearTimeout(timeout)
+    }
 
     // Auth 상태 변경 구독
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
