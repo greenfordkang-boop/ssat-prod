@@ -114,17 +114,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Auth 상태 변경 구독 (로그인/로그아웃 감지)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth 상태 변경:', event)
-      if (event === 'SIGNED_IN' && session?.user) {
-        const userProfile = await loadProfile(session.user.id)
-        if (isMounted) {
-          setUser(session.user)
-          setProfile(userProfile)
+      try {
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('로그인 감지, 프로필 로드 시작')
+          const userProfile = await loadProfile(session.user.id)
+          console.log('프로필 로드 결과:', userProfile)
+          if (isMounted) {
+            setUser(session.user)
+            setProfile(userProfile)
+            setLoading(false) // 로딩 완료
+          }
+        } else if (event === 'SIGNED_OUT') {
+          if (isMounted) {
+            setUser(null)
+            setProfile(null)
+          }
+        } else if (event === 'INITIAL_SESSION') {
+          // 초기 세션 - checkSession에서 이미 처리
+          console.log('INITIAL_SESSION 이벤트')
+          if (isMounted) setLoading(false)
         }
-      } else if (event === 'SIGNED_OUT') {
-        if (isMounted) {
-          setUser(null)
-          setProfile(null)
-        }
+      } catch (e) {
+        console.error('Auth 상태 변경 처리 오류:', e)
+        if (isMounted) setLoading(false)
       }
     })
 
