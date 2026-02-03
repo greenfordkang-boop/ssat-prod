@@ -90,8 +90,16 @@ export default function DowntimeDashboard() {
 
   // 가동율 데이터 필터링
   const filteredData = useMemo(() => {
+    // 디버깅: 데이터 구조 확인
+    if (data.availabilityData.length > 0) {
+      console.log('⏱️ 가동율 데이터 샘플:', data.availabilityData[0])
+      console.log('⏱️ 가동율 데이터 키:', Object.keys(data.availabilityData[0]))
+    } else {
+      console.log('⏱️ 가동율 데이터 없음')
+    }
+
     return data.availabilityData.filter(d => {
-      const dateStr = String(d.date || d.일자 || '')
+      const dateStr = String(d.date || d.일자 || d.생산일자 || '')
       if (!dateStr) return true
 
       let rowMonth = null
@@ -110,8 +118,15 @@ export default function DowntimeDashboard() {
     const reasonMap = new Map<string, number>()
 
     filteredData.forEach(item => {
-      const reason = String(item.비가동사유 || item.downtime_reason || '기타')
-      const time = parseFloat(String(item.비가동시간 || item.downtime_minutes || 0)) || 0
+      // 다양한 필드명 시도
+      const reason = String(
+        item.비가동사유 || item.downtime_reason || item['비가동 사유'] ||
+        item.사유 || item.reason || '기타'
+      )
+      const time = parseFloat(String(
+        item.비가동시간 || item.downtime_minutes || item['비가동시간(분)'] ||
+        item['비가동 시간'] || item.downtime || 0
+      )) || 0
 
       if (time > 0) {
         reasonMap.set(reason, (reasonMap.get(reason) || 0) + time)
@@ -144,9 +159,19 @@ export default function DowntimeDashboard() {
     const equipMap = new Map<string, { total: number; downtime: number }>()
 
     filteredData.forEach(item => {
-      const equip = String(item['설비(라인)명'] || item.equipment_name || '기타')
-      const total = parseFloat(String(item.가동시간 || item.operating_minutes || 0)) || 0
-      const downtime = parseFloat(String(item.비가동시간 || item.downtime_minutes || 0)) || 0
+      // 다양한 필드명 시도
+      const equip = String(
+        item['설비(라인)명'] || item.equipment_name || item.설비명 ||
+        item.설비 || item.라인명 || item.equipment || '기타'
+      )
+      const total = parseFloat(String(
+        item.가동시간 || item.operating_minutes || item['가동시간(분)'] ||
+        item['가동 시간'] || item.operating || 0
+      )) || 0
+      const downtime = parseFloat(String(
+        item.비가동시간 || item.downtime_minutes || item['비가동시간(분)'] ||
+        item['비가동 시간'] || item.downtime || 0
+      )) || 0
 
       if (!equipMap.has(equip)) {
         equipMap.set(equip, { total: 0, downtime: 0 })
