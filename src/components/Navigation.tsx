@@ -14,10 +14,12 @@ interface NavigationProps {
 
 const mainTabs = [
   { id: 'overview', name: '종합현황', icon: '📊' },
-  { id: 'upload', name: '파일업로드', icon: '📤' },
-  { id: 'process', name: '공정별현황', icon: '🔧' },
+  { id: 'process', name: '공정현황', icon: '🔧' },
   { id: 'downtime', name: '비가동현황', icon: '⏸️' },
-  { id: 'wip', name: '재공재고', icon: '📦' }
+  { id: 'wip', name: '재공재고', icon: '📦' },
+  { id: 'quality', name: '품질분석', icon: '✅' },
+  { id: 'pivot', name: '데이터조회', icon: '🔍' },
+  { id: 'upload', name: '파일업로드', icon: '📤' }
 ]
 
 const processTabs = [
