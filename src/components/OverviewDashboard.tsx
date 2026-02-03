@@ -22,21 +22,7 @@ export default function OverviewDashboard() {
   const [showDetailTable, setShowDetailTable] = useState(true)
   const [processFilter, setProcessFilter] = useState('all')
 
-  // 데이터 없음 표시
-  if (data.rawData.length === 0) {
-    return (
-      <div className="bg-white rounded-xl p-16 text-center border border-slate-200">
-        <div className="text-6xl mb-4">📊</div>
-        <h3 className="text-xl font-bold text-slate-700 mb-2">생산실적 데이터가 없습니다</h3>
-        <p className="text-slate-500 mb-6">종합현황 분석을 위해 생산실적 CSV 파일을 업로드하세요</p>
-        <div className="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 font-medium rounded-xl">
-          📤 파일업로드 메뉴에서 생산실적 데이터를 업로드해 주세요
-        </div>
-      </div>
-    )
-  }
-
-  // OEE 계산 (공정별 종합효율)
+  // OEE 계산 (공정별 종합효율) - hooks는 항상 맨 위에!
   const oeeStats = useMemo(() => {
     // 가동율 데이터에서 시간가동율, 성능가동율 계산
     const monthAvailability = data.availabilityData.filter(d => {
@@ -239,6 +225,20 @@ export default function OverviewDashboard() {
     })
     return Array.from(set)
   }, [filteredData])
+
+  // 데이터 없음 표시 - hooks 다음에 배치!
+  if (data.rawData.length === 0) {
+    return (
+      <div className="bg-white rounded-xl p-16 text-center border border-slate-200">
+        <div className="text-6xl mb-4">📊</div>
+        <h3 className="text-xl font-bold text-slate-700 mb-2">생산실적 데이터가 없습니다</h3>
+        <p className="text-slate-500 mb-6">종합현황 분석을 위해 생산실적 CSV 파일을 업로드하세요</p>
+        <div className="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 font-medium rounded-xl">
+          📤 파일업로드 메뉴에서 생산실적 데이터를 업로드해 주세요
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
