@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useData } from '@/contexts/DataContext'
 import { formatNumber, parseNumber } from '@/lib/utils'
 import {
@@ -22,6 +22,17 @@ interface WipDashboardProps {
 }
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' } | null
+
+// 피벗 집계 방식
+type AggregateMethod = 'sum' | 'count' | 'avg' | 'min' | 'max'
+
+// 피벗 설정 타입
+interface PivotConfig {
+  rowField: string
+  colField: string
+  valueField: string
+  aggregateMethod: AggregateMethod
+}
 
 // 엑셀 다운로드 함수
 const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
@@ -301,6 +312,15 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
   // 분산 필터 상태
   const [showOnlyDistributed, setShowOnlyDistributed] = useState(false)
 
+  // 피벗 설정 상태
+  const [pivotConfig, setPivotConfig] = useState<PivotConfig>({
+    rowField: '창고명',
+    colField: '품목유형',
+    valueField: '재고',
+    aggregateMethod: 'sum'
+  })
+  const [showPivot, setShowPivot] = useState(true)
+
   // 필터링된 재고 데이터
   const filteredInventory = useMemo(() => {
     let result = [...data.wipInventoryData]
@@ -381,6 +401,120 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     if (data.priceData.length === 0) return []
     return Object.keys(data.priceData[0]).filter(key => key !== 'id' && key !== 'data')
   }, [data.priceData])
+
+  // 피벗 가능한 필드 목록
+  const pivotFields = useMemo(() => {
+    if (data.wipInventoryData.length === 0) return { dimension: [], measure: [] }
+
+    const allKeys = Object.keys(data.wipInventoryData[0]).filter(key => key !== 'id' && key !== 'data')
+
+    // 숫자 필드와 문자 필드 분리
+    const sampleRow = data.wipInventoryData[0]
+    const dimension: string[] = [] // 행/열용 (문자)
+    const measure: string[] = []   // 값용 (숫자)
+
+    allKeys.forEach(key => {
+      const value = sampleRow[key as keyof typeof sampleRow]
+      const numValue = parseNumber(value)
+      // 숫자로 변환 가능하고 실제로 숫자 값이면 measure로
+      if (typeof value === 'number' || (numValue !== 0 && !isNaN(numValue))) {
+        measure.push(key)
+      }
+      // 모든 필드는 dimension으로 사용 가능
+      dimension.push(key)
+    })
+
+    return { dimension, measure: measure.length > 0 ? measure : dimension }
+  }, [data.wipInventoryData])
+
+  // 피벗 테이블 데이터 계산
+  const pivotData = useMemo(() => {
+    if (data.wipInventoryData.length === 0) return { rows: [], cols: [], matrix: {}, rowTotals: {}, colTotals: {}, grandTotal: 0 }
+
+    const { rowField, colField, valueField, aggregateMethod } = pivotConfig
+
+    // 고유한 행/열 값 추출
+    const rowValues = new Set<string>()
+    const colValues = new Set<string>()
+
+    // 집계용 데이터 구조
+    const matrix: Record<string, Record<string, number[]>> = {}
+
+    data.wipInventoryData.forEach(row => {
+      const rowKey = String(getFieldValue(row, rowField) || '(없음)')
+      const colKey = String(getFieldValue(row, colField) || '(없음)')
+      const value = parseNumber(getFieldValue(row, valueField))
+
+      rowValues.add(rowKey)
+      colValues.add(colKey)
+
+      if (!matrix[rowKey]) matrix[rowKey] = {}
+      if (!matrix[rowKey][colKey]) matrix[rowKey][colKey] = []
+      matrix[rowKey][colKey].push(value)
+    })
+
+    // 집계 함수
+    const aggregate = (values: number[]): number => {
+      if (values.length === 0) return 0
+      switch (aggregateMethod) {
+        case 'sum': return values.reduce((a, b) => a + b, 0)
+        case 'count': return values.length
+        case 'avg': return values.reduce((a, b) => a + b, 0) / values.length
+        case 'min': return Math.min(...values)
+        case 'max': return Math.max(...values)
+        default: return values.reduce((a, b) => a + b, 0)
+      }
+    }
+
+    // 집계 실행
+    const aggregatedMatrix: Record<string, Record<string, number>> = {}
+    const rowTotals: Record<string, number> = {}
+    const colTotals: Record<string, number> = {}
+    let grandTotal = 0
+
+    const rows = Array.from(rowValues).sort()
+    const cols = Array.from(colValues).sort()
+
+    rows.forEach(rowKey => {
+      aggregatedMatrix[rowKey] = {}
+      let rowSum: number[] = []
+
+      cols.forEach(colKey => {
+        const values = matrix[rowKey]?.[colKey] || []
+        const aggregated = aggregate(values)
+        aggregatedMatrix[rowKey][colKey] = aggregated
+        rowSum = [...rowSum, ...values]
+      })
+
+      rowTotals[rowKey] = aggregate(rowSum)
+    })
+
+    cols.forEach(colKey => {
+      let colSum: number[] = []
+      rows.forEach(rowKey => {
+        const values = matrix[rowKey]?.[colKey] || []
+        colSum = [...colSum, ...values]
+      })
+      colTotals[colKey] = aggregate(colSum)
+    })
+
+    // 전체 합계
+    let allValues: number[] = []
+    rows.forEach(rowKey => {
+      cols.forEach(colKey => {
+        const values = matrix[rowKey]?.[colKey] || []
+        allValues = [...allValues, ...values]
+      })
+    })
+    grandTotal = aggregate(allValues)
+
+    return { rows, cols, matrix: aggregatedMatrix, rowTotals, colTotals, grandTotal }
+  }, [data.wipInventoryData, pivotConfig, getFieldValue])
+
+  // 피벗 설정 변경 핸들러
+  const handlePivotConfigChange = useCallback((field: keyof PivotConfig, value: string) => {
+    setPivotConfig(prev => ({ ...prev, [field]: value }))
+  }, [])
 
   // 디버그: 단가표 필드명 확인
   const priceFieldInfo = useMemo(() => {
@@ -709,6 +843,161 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
                   </p>
                 )}
               </div>
+            )}
+          </div>
+
+          {/* 피벗 테이블 - 재고조회 */}
+          <div className="bg-white rounded-xl p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold flex items-center gap-2">
+                📊 재고조회 (피벗 분석)
+                <span className="text-sm font-normal text-slate-400">자유롭게 행/열/값을 선택하여 분석</span>
+              </h3>
+              <button
+                onClick={() => setShowPivot(!showPivot)}
+                className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 bg-slate-100 rounded-lg"
+              >
+                {showPivot ? '접기' : '펼치기'}
+              </button>
+            </div>
+
+            {data.wipInventoryData.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p>재고현황 데이터를 업로드하면 피벗 분석이 가능합니다</p>
+              </div>
+            ) : showPivot && (
+              <>
+                {/* 피벗 설정 패널 */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 mb-4 border border-blue-100">
+                  <div className="grid grid-cols-4 gap-4">
+                    {/* 행 선택 */}
+                    <div>
+                      <label className="block text-xs font-semibold text-blue-700 mb-1">📋 행 (Row)</label>
+                      <select
+                        value={pivotConfig.rowField}
+                        onChange={(e) => handlePivotConfigChange('rowField', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                      >
+                        {pivotFields.dimension.map(field => (
+                          <option key={field} value={field}>{field}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 열 선택 */}
+                    <div>
+                      <label className="block text-xs font-semibold text-indigo-700 mb-1">📊 열 (Column)</label>
+                      <select
+                        value={pivotConfig.colField}
+                        onChange={(e) => handlePivotConfigChange('colField', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                      >
+                        {pivotFields.dimension.map(field => (
+                          <option key={field} value={field}>{field}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 값 선택 */}
+                    <div>
+                      <label className="block text-xs font-semibold text-emerald-700 mb-1">💰 값 (Value)</label>
+                      <select
+                        value={pivotConfig.valueField}
+                        onChange={(e) => handlePivotConfigChange('valueField', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-emerald-200 rounded-lg bg-white focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
+                      >
+                        {pivotFields.measure.map(field => (
+                          <option key={field} value={field}>{field}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 집계 방식 */}
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-700 mb-1">🔢 집계 방식</label>
+                      <select
+                        value={pivotConfig.aggregateMethod}
+                        onChange={(e) => handlePivotConfigChange('aggregateMethod', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                      >
+                        <option value="sum">합계 (SUM)</option>
+                        <option value="count">개수 (COUNT)</option>
+                        <option value="avg">평균 (AVG)</option>
+                        <option value="min">최소값 (MIN)</option>
+                        <option value="max">최대값 (MAX)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 피벗 테이블 */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="px-3 py-3 text-left font-bold text-white bg-gradient-to-r from-blue-600 to-blue-500 border border-blue-700 sticky left-0 z-10">
+                          {pivotConfig.rowField} \ {pivotConfig.colField}
+                        </th>
+                        {pivotData.cols.map(col => (
+                          <th key={col} className="px-3 py-3 text-center font-semibold text-white bg-gradient-to-r from-indigo-500 to-indigo-400 border border-indigo-600 whitespace-nowrap">
+                            {col}
+                          </th>
+                        ))}
+                        <th className="px-3 py-3 text-center font-bold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 border border-emerald-700">
+                          합계
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pivotData.rows.map((row, rowIdx) => (
+                        <tr key={row} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                          <td className="px-3 py-2 font-medium text-slate-800 border border-slate-200 sticky left-0 bg-inherit z-10">
+                            {row}
+                          </td>
+                          {pivotData.cols.map(col => {
+                            const value = pivotData.matrix[row]?.[col] || 0
+                            return (
+                              <td key={col} className="px-3 py-2 text-right tabular-nums border border-slate-200">
+                                {value !== 0 ? formatNumber(Math.round(value * 100) / 100) : '-'}
+                              </td>
+                            )
+                          })}
+                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200">
+                            {formatNumber(Math.round((pivotData.rowTotals[row] || 0) * 100) / 100)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gradient-to-r from-blue-50 to-emerald-50">
+                        <td className="px-3 py-3 font-bold text-slate-800 border border-slate-300 sticky left-0 bg-blue-50 z-10">
+                          합계
+                        </td>
+                        {pivotData.cols.map(col => (
+                          <td key={col} className="px-3 py-3 text-right tabular-nums font-semibold text-blue-700 border border-blue-200">
+                            {formatNumber(Math.round((pivotData.colTotals[col] || 0) * 100) / 100)}
+                          </td>
+                        ))}
+                        <td className="px-3 py-3 text-right tabular-nums font-bold text-emerald-800 bg-emerald-100 border border-emerald-300">
+                          {formatNumber(Math.round(pivotData.grandTotal * 100) / 100)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* 분석 정보 */}
+                <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
+                  <span>📊 행: {pivotData.rows.length}개</span>
+                  <span>📋 열: {pivotData.cols.length}개</span>
+                  <span>🔢 집계: {
+                    pivotConfig.aggregateMethod === 'sum' ? '합계' :
+                    pivotConfig.aggregateMethod === 'count' ? '개수' :
+                    pivotConfig.aggregateMethod === 'avg' ? '평균' :
+                    pivotConfig.aggregateMethod === 'min' ? '최소값' : '최대값'
+                  }</span>
+                </div>
+              </>
             )}
           </div>
         </>
