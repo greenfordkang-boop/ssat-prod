@@ -113,24 +113,29 @@ export default function DowntimeDashboard() {
     })
   }, [data.availabilityData, selectedMonth])
 
-  // 비가동 사유별 분석
+  // 비가동 사유별 분석 (컬럼별 비가동 사유 구조 지원)
   const downtimeByReason = useMemo(() => {
     const reasonMap = new Map<string, number>()
 
-    filteredData.forEach(item => {
-      // 다양한 필드명 시도
-      const reason = String(
-        item.비가동사유 || item.downtime_reason || item['비가동 사유'] ||
-        item.사유 || item.reason || '기타'
-      )
-      const time = parseFloat(String(
-        item.비가동시간 || item.downtime_minutes || item['비가동시간(분)'] ||
-        item['비가동 시간'] || item.downtime || 0
-      )) || 0
+    // 비가동 사유로 인식할 컬럼명 패턴
+    const excludeKeys = ['생산일자', '공정', '설비', 'LINE', '주/야간', '무인', '조업시간', '가동시간', '비가동합계', '시간가동율', '계획정지합계', '설비가동율', 'id', 'data']
 
-      if (time > 0) {
-        reasonMap.set(reason, (reasonMap.get(reason) || 0) + time)
-      }
+    filteredData.forEach(item => {
+      const keys = Object.keys(item)
+
+      // 각 컬럼을 순회하며 비가동 사유 컬럼 찾기
+      keys.forEach(key => {
+        // 제외할 키 체크
+        const isExcluded = excludeKeys.some(ex => key.includes(ex))
+        if (isExcluded) return
+
+        const value = parseFloat(String(item[key as keyof typeof item] || 0)) || 0
+        if (value > 0) {
+          // 컬럼명을 비가동 사유로 사용
+          const reason = key
+          reasonMap.set(reason, (reasonMap.get(reason) || 0) + value)
+        }
+      })
     })
 
     let result = Array.from(reasonMap.entries())
@@ -158,27 +163,40 @@ export default function DowntimeDashboard() {
   const downtimeByEquipment = useMemo(() => {
     const equipMap = new Map<string, { total: number; downtime: number }>()
 
+    // 비가동 사유로 인식할 컬럼명 패턴 (제외 목록)
+    const excludeKeys = ['생산일자', '공정', '설비', 'LINE', '주/야간', '무인', '조업시간', '가동시간', '비가동합계', '시간가동율', '계획정지합계', '설비가동율', 'id', 'data']
+
     filteredData.forEach(item => {
-      // 다양한 필드명 시도
+      // 설비명 찾기
       const equip = String(
-        item['설비(라인)명'] || item.equipment_name || item.설비명 ||
-        item.설비 || item.라인명 || item.equipment || '기타'
+        item['설비/LINE'] || item['설비(라인)명'] || item.equipment_name ||
+        item.설비명 || item.설비 || item.라인명 || '기타'
       )
-      const total = parseFloat(String(
-        item.가동시간 || item.operating_minutes || item['가동시간(분)'] ||
-        item['가동 시간'] || item.operating || 0
+
+      // 가동시간
+      const operatingTime = parseFloat(String(
+        item['가동시간(분)'] || item.가동시간 || item.operating_minutes || 0
       )) || 0
-      const downtime = parseFloat(String(
-        item.비가동시간 || item.downtime_minutes || item['비가동시간(분)'] ||
-        item['비가동 시간'] || item.downtime || 0
-      )) || 0
+
+      // 비가동합계가 있으면 사용, 없으면 각 비가동 사유 컬럼 합산
+      let downtimeTotal = parseFloat(String(item.비가동합계 || 0)) || 0
+
+      if (downtimeTotal === 0) {
+        // 각 비가동 사유 컬럼 합산
+        const keys = Object.keys(item)
+        keys.forEach(key => {
+          const isExcluded = excludeKeys.some(ex => key.includes(ex))
+          if (isExcluded) return
+          downtimeTotal += parseFloat(String(item[key as keyof typeof item] || 0)) || 0
+        })
+      }
 
       if (!equipMap.has(equip)) {
         equipMap.set(equip, { total: 0, downtime: 0 })
       }
       const current = equipMap.get(equip)!
-      current.total += total + downtime
-      current.downtime += downtime
+      current.total += operatingTime + downtimeTotal
+      current.downtime += downtimeTotal
     })
 
     return Array.from(equipMap.entries())
@@ -194,10 +212,16 @@ export default function DowntimeDashboard() {
 
   // 총 비가동시간 계산
   const totalDowntime = useMemo(() => {
-    return filteredData.reduce((sum, item) => {
-      return sum + (parseFloat(String(item.비가동시간 || item.downtime_minutes || 0)) || 0)
-    }, 0)
-  }, [filteredData])
+    // 비가동합계 컬럼이 있으면 사용
+    const hasTotal = filteredData.some(item => item.비가동합계 !== undefined)
+    if (hasTotal) {
+      return filteredData.reduce((sum, item) => {
+        return sum + (parseFloat(String(item.비가동합계 || 0)) || 0)
+      }, 0)
+    }
+    // downtimeByReason에서 계산된 합계 사용
+    return downtimeByReason.reduce((sum, item) => sum + item.value, 0)
+  }, [filteredData, downtimeByReason])
 
   // 정렬 핸들러
   const handleSort = (key: string) => {
