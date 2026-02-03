@@ -64,6 +64,15 @@ function SortableHeader({
   )
 }
 
+// 설비/Line 필드명 추출 헬퍼 함수
+const getEquipmentName = (row: Record<string, unknown>): string => {
+  // 다양한 필드명 지원
+  const name = row['설비(라인)명'] || row['설비/라인'] || row['설비/Line'] ||
+               row['설비/LINE'] || row['설비명'] || row.LINE || row.Line ||
+               row['라인명'] || row['설비(라인)코드'] || row['설비코드'] || ''
+  return String(name) || '기타'
+}
+
 export default function ProcessDashboard({ process, subMenu }: ProcessDashboardProps) {
   const { data, selectedMonth, getFilteredData } = useData()
 
@@ -147,12 +156,12 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       }))
   }, [processData])
 
-  // 설비별 현황
+  // 설비/Line별 현황
   const equipmentStats = useMemo(() => {
     const equip: Record<string, { production: number; defect: number; time: number }> = {}
 
     processData.forEach(row => {
-      const name = row['설비(라인)명'] || '기타'
+      const name = getEquipmentName(row as Record<string, unknown>)
       const prod = parseNumber(row.생산수량)
       const goodQty = parseNumber(row.양품수량)
       const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
@@ -195,7 +204,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   // UPH 분석
   const uphAnalysis = useMemo(() => {
     let result = processData.map(row => ({
-      equipment: row['설비(라인)명'] || '기타',
+      equipment: getEquipmentName(row as Record<string, unknown>),
       product: row.품목명 || '',
       uph: parseNumber(row.UPH),
       standardCT: parseNumber(row['표준C/T']),
@@ -345,25 +354,25 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
           <div className="bg-white rounded-xl p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold flex items-center gap-2">
-                설비별 현황
+                설비/Line별 현황
                 <span className="text-sm font-normal text-slate-400">({equipmentStats.length}건)</span>
               </h3>
               <div className="flex items-center gap-3">
                 <input
                   type="text"
-                  placeholder="설비 검색..."
+                  placeholder="설비/Line 검색..."
                   value={equipFilter}
                   onChange={(e) => setEquipFilter(e.target.value)}
                   className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg w-40"
                 />
                 <button
                   onClick={() => downloadExcel(equipmentStats.map(r => ({
-                    설비: r.name,
+                    '설비/Line': r.name,
                     생산수량: r.production,
                     불량수량: r.defect,
                     '불량율(%)': r.defectRate.toFixed(1),
                     UPH: r.uph
-                  })), `${processName}_설비별현황`)}
+                  })), `${processName}_설비Line별현황`)}
                   className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
                 >
                   📥 엑셀
@@ -381,7 +390,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50">
-                      <SortableHeader label="설비" sortKey="name" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} />
+                      <SortableHeader label="설비/Line" sortKey="name" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} />
                       <SortableHeader label="생산수량" sortKey="production" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
                       <SortableHeader label="불량수량" sortKey="defect" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
                       <SortableHeader label="불량율" sortKey="defectRate" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
@@ -424,7 +433,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
             <div className="flex items-center gap-3">
               <button
                 onClick={() => downloadExcel(uphAnalysis.map(r => ({
-                  설비: r.equipment,
+                  '설비/Line': r.equipment,
                   품목: r.product,
                   UPH: r.uph,
                   표준CT: r.standardCT.toFixed(1),
@@ -450,7 +459,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50">
-                    <SortableHeader label="설비" sortKey="equipment" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} />
+                    <SortableHeader label="설비/Line" sortKey="equipment" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} />
                     <SortableHeader label="품목" sortKey="product" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} />
                     <SortableHeader label="UPH" sortKey="uph" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} align="right" />
                     <SortableHeader label="표준CT" sortKey="standardCT" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} align="right" />
@@ -494,7 +503,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
             <div className="flex items-center gap-3">
               <button
                 onClick={() => downloadExcel(ctAnalysis.map(r => ({
-                  설비: r.equipment,
+                  '설비/Line': r.equipment,
                   품목: r.product,
                   표준CT: r.standardCT.toFixed(1),
                   실제CT: r.actualCT.toFixed(1),
@@ -522,7 +531,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50">
-                    <SortableHeader label="설비" sortKey="equipment" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} />
+                    <SortableHeader label="설비/Line" sortKey="equipment" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} />
                     <SortableHeader label="품목" sortKey="product" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} />
                     <SortableHeader label="표준CT" sortKey="standardCT" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} align="right" />
                     <SortableHeader label="실제CT" sortKey="actualCT" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} align="right" />
