@@ -272,7 +272,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  // 데이터 업로드 (핵심 함수 - 충돌 방지)
+  // 데이터 업로드 (핵심 함수 - Supabase 기존 데이터와 병합)
   const uploadData = async (
     type: keyof typeof TABLE_MAPPING,
     newData: unknown[],
@@ -286,13 +286,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       let finalData: unknown[]
 
       if (type === 'rawData' && months && months.length > 0) {
-        // 월별 데이터 병합: 기존 데이터에서 해당 월 제거 후 새 데이터 추가
-        const existingData = data.rawData.filter(item => {
+        // ⭐ 중요: Supabase에서 기존 데이터를 직접 가져와서 병합
+        console.log(`📥 [${tableName}] 기존 데이터 로드 중...`)
+        const existingFromDB = await loadFromSupabase(tableName) as ProductionData[]
+        console.log(`📥 [${tableName}] DB에서 ${existingFromDB.length}건 로드됨`)
+
+        // 업로드할 월의 데이터만 제거하고 나머지 유지
+        const existingData = existingFromDB.filter(item => {
           const itemMonth = getMonthFromDate(item.생산일자)
           return !months.includes(itemMonth)
         })
+
         finalData = [...existingData, ...newData]
-        console.log(`📊 업로드: 기존 ${existingData.length}건 + 신규 ${newData.length}건 = 총 ${finalData.length}건`)
+        console.log(`📊 업로드 병합: 기존 유지 ${existingData.length}건 + 신규 ${newData.length}건 = 총 ${finalData.length}건`)
+        console.log(`📊 제거된 월: ${months.join(', ')}월`)
       } else {
         finalData = newData
       }
