@@ -13,32 +13,32 @@ interface NavigationProps {
 }
 
 const mainTabs = [
-  { id: 'overview', name: '종합현황', icon: '📊' },
-  { id: 'process', name: '공정현황', icon: '🔧' },
-  { id: 'downtime', name: '비가동현황', icon: '⏸️' },
-  { id: 'wip', name: '재공재고', icon: '📦' },
-  { id: 'quality', name: '품질분석', icon: '✅' },
-  { id: 'pivot', name: '데이터조회', icon: '🔍' },
-  { id: 'upload', name: '파일업로드', icon: '📤' }
+  { id: 'overview', name: '종합현황' },
+  { id: 'process', name: '공정현황' },
+  { id: 'downtime', name: '비가동현황' },
+  { id: 'wip', name: '재공재고' },
+  { id: 'quality', name: '품질분석' },
+  { id: 'pivot', name: '데이터조회' },
+  { id: 'upload', name: '파일업로드' }
 ]
 
 const processTabs = [
-  { id: 'injection', name: '사출공정', icon: '💉', color: '#3B82F6' },
-  { id: 'painting', name: '도장공정', icon: '🎨', color: '#10B981' },
-  { id: 'printing', name: '인쇄공정', icon: '🖨️', color: '#F59E0B' },
-  { id: 'assembly', name: '조립공정', icon: '🔧', color: '#EF4444' }
+  { id: 'injection', name: '사출' },
+  { id: 'painting', name: '도장' },
+  { id: 'printing', name: '인쇄' },
+  { id: 'assembly', name: '조립' }
 ]
 
 const commonSubMenus = [
-  { id: 'production', name: '생산현황', icon: '📊' },
-  { id: 'uph', name: 'UPH현황', icon: '⚡' },
-  { id: 'cycletime', name: 'Cycle Time', icon: '⏱️' },
-  { id: 'packaging', name: '검포장현황', icon: '📦' }
+  { id: 'production', name: '생산현황' },
+  { id: 'uph', name: 'UPH현황' },
+  { id: 'cycletime', name: 'Cycle Time' },
+  { id: 'packaging', name: '검포장현황' }
 ]
 
 const assemblyExtraMenus = [
-  { id: 'defect-repair', name: '불량수리현황', icon: '🔧' },
-  { id: 'material-defect', name: '자재불량현황', icon: '⚠️' }
+  { id: 'defect-repair', name: '불량수리현황' },
+  { id: 'material-defect', name: '자재불량현황' }
 ]
 
 export default function Navigation({
@@ -54,20 +54,17 @@ export default function Navigation({
 
   return (
     <div className="sticky top-0 z-50">
-      {/* Main Navigation */}
-      <nav className="bg-slate-900 text-white">
+      {/* Main Navigation - Apple Style */}
+      <nav className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-12">
             {/* Logo */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold">S</span>
-                <span className="font-bold text-lg">신성오토텍</span>
-              </div>
+            <div className="flex items-center">
+              <span className="font-semibold text-[15px] tracking-tight text-gray-900">신성오토텍</span>
             </div>
 
             {/* Main Tabs */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center">
               {mainTabs.map(tab => (
                 <button
                   key={tab.id}
@@ -75,25 +72,24 @@ export default function Navigation({
                     onTabChange(tab.id)
                     if (tab.id !== 'process') onProcessChange(null)
                   }}
-                  className={`px-5 py-2 rounded-lg font-semibold text-sm transition ${
+                  className={`px-4 py-1.5 mx-0.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
                     activeTab === tab.id
-                      ? 'bg-blue-500 text-white'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
                 >
-                  <span className="mr-1.5">{tab.icon}</span>
                   {tab.name}
                 </button>
               ))}
             </div>
 
             {/* User Info & Controls */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {/* Month Selector */}
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="bg-slate-800 text-white px-3 py-1.5 rounded-lg border border-slate-700 text-sm"
+                className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md border-0 text-[13px] font-medium focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 cursor-pointer"
               >
                 {Array.from({ length: 12 }, (_, i) => (
                   <option key={i + 1} value={i + 1}>{i + 1}월</option>
@@ -102,18 +98,24 @@ export default function Navigation({
 
               {/* Sync Status */}
               {syncing && (
-                <span className="text-sm text-blue-400 animate-pulse">동기화 중...</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                  <span className="text-[12px] text-gray-500">동기화</span>
+                </div>
               )}
+
+              {/* Divider */}
+              <div className="w-px h-4 bg-gray-200" />
 
               {/* User */}
               <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-400">
-                  {profile?.display_name || user?.email}
-                  {isAdmin && <span className="ml-1 text-yellow-400">(관리자)</span>}
+                <span className="text-[13px] text-gray-600">
+                  {profile?.display_name || user?.email?.split('@')[0]}
+                  {isAdmin && <span className="ml-1 text-amber-600 font-medium">관리자</span>}
                 </span>
                 <button
                   onClick={signOut}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition"
+                  className="px-3 py-1.5 text-[13px] text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                 >
                   로그아웃
                 </button>
@@ -125,20 +127,19 @@ export default function Navigation({
 
       {/* Process Sub Navigation */}
       {activeTab === 'process' && (
-        <div className="bg-slate-50 border-b border-slate-200">
+        <div className="bg-gray-50/80 backdrop-blur-xl border-b border-gray-200/50">
           <div className="max-w-7xl mx-auto px-6">
-            <div className="flex gap-0">
+            <div className="flex items-center h-11 gap-1">
               {processTabs.map(process => (
                 <button
                   key={process.id}
                   onClick={() => onProcessChange(process.id)}
-                  className={`px-7 py-4 text-sm font-medium transition border-b-2 ${
+                  className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
                     activeProcess === process.id
-                      ? 'text-blue-600 border-blue-600 font-semibold'
-                      : 'text-gray-500 border-transparent hover:text-gray-900 hover:bg-gray-100'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
                   }`}
                 >
-                  <span className="mr-2">{process.icon}</span>
                   {process.name}
                 </button>
               ))}
@@ -149,17 +150,17 @@ export default function Navigation({
 
       {/* Sub Menu (3rd level) */}
       {activeTab === 'process' && activeProcess && (
-        <div className="bg-white border-b border-slate-200">
+        <div className="bg-white border-b border-gray-100">
           <div className="max-w-7xl mx-auto px-6">
-            <div className="flex gap-1">
+            <div className="flex items-center h-10 gap-0.5">
               {commonSubMenus.map(menu => (
                 <button
                   key={menu.id}
                   onClick={() => onSubMenuChange(menu.id)}
-                  className={`px-5 py-3 text-sm font-medium transition border-b-2 ${
+                  className={`px-3 py-1 rounded text-[12px] font-medium transition-all duration-200 ${
                     activeSubMenu === menu.id
-                      ? 'text-blue-500 border-blue-500 font-semibold'
-                      : 'text-gray-400 border-transparent hover:text-gray-600'
+                      ? 'text-blue-600 bg-blue-50'
+                      : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
                   {menu.name}
@@ -169,10 +170,10 @@ export default function Navigation({
                 <button
                   key={menu.id}
                   onClick={() => onSubMenuChange(menu.id)}
-                  className={`px-5 py-3 text-sm font-medium transition border-b-2 ${
+                  className={`px-3 py-1 rounded text-[12px] font-medium transition-all duration-200 ${
                     activeSubMenu === menu.id
-                      ? 'text-blue-500 border-blue-500 font-semibold'
-                      : 'text-gray-400 border-transparent hover:text-gray-600'
+                      ? 'text-blue-600 bg-blue-50'
+                      : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
                   {menu.name}
@@ -185,28 +186,28 @@ export default function Navigation({
 
       {/* WIP Sub Navigation */}
       {activeTab === 'wip' && (
-        <div className="bg-slate-50 border-b border-slate-200">
+        <div className="bg-gray-50/80 backdrop-blur-xl border-b border-gray-200/50">
           <div className="max-w-7xl mx-auto px-6">
-            <div className="flex gap-0">
+            <div className="flex items-center h-11 gap-1">
               <button
                 onClick={() => onSubMenuChange('status')}
-                className={`px-7 py-4 text-sm font-medium transition border-b-2 ${
+                className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
                   activeSubMenu === 'status'
-                    ? 'text-blue-600 border-blue-600 font-semibold'
-                    : 'text-gray-500 border-transparent hover:text-gray-900 hover:bg-gray-100'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
                 }`}
               >
-                📊 재공현황
+                재공현황
               </button>
               <button
                 onClick={() => onSubMenuChange('price')}
-                className={`px-7 py-4 text-sm font-medium transition border-b-2 ${
+                className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
                   activeSubMenu === 'price'
-                    ? 'text-blue-600 border-blue-600 font-semibold'
-                    : 'text-gray-500 border-transparent hover:text-gray-900 hover:bg-gray-100'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
                 }`}
               >
-                💰 부품단가표
+                부품단가표
               </button>
             </div>
           </div>
