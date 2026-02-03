@@ -7898,6 +7898,47 @@
       }
     }
 
+    // 🔍 Supabase 데이터 현황 확인 (콘솔에서 checkSupabaseData() 실행)
+    window.checkSupabaseData = async function() {
+      console.log('=== 📊 Supabase vs LocalStorage 데이터 비교 ===');
+
+      for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
+        const localData = state[stateKey] || [];
+        const supabaseData = await loadFromSupabase(tableName);
+        const supabaseCount = supabaseData ? supabaseData.length : 0;
+
+        const status = supabaseCount >= localData.length ? '✅' : '⚠️ LOCAL > SUPABASE';
+        console.log(`${status} ${tableName}: Supabase=${supabaseCount}건, Local=${localData.length}건`);
+      }
+
+      console.log('\n💡 만약 Supabase 데이터가 적으면 forceUploadAll() 실행하세요');
+    };
+
+    // 🔄 로컬 데이터를 Supabase에 강제 업로드 (콘솔에서 forceUploadAll() 실행)
+    window.forceUploadAll = async function() {
+      if (!confirm('현재 로컬 데이터를 Supabase에 강제로 업로드합니다. 계속하시겠습니까?')) return;
+
+      console.log('=== 🚀 강제 업로드 시작 ===');
+      isUploading = true;
+
+      try {
+        for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
+          const localData = state[stateKey] || [];
+          if (localData.length > 0) {
+            console.log(`📤 ${tableName}: ${localData.length}건 업로드 중...`);
+            await saveToSupabase(tableName, localData);
+          }
+        }
+        console.log('✅ 강제 업로드 완료!');
+        alert('모든 데이터가 Supabase에 업로드되었습니다.');
+      } catch (e) {
+        console.error('❌ 강제 업로드 실패:', e);
+        alert('업로드 실패: ' + e.message);
+      } finally {
+        isUploading = false;
+      }
+    };
+
     // 🔍 데이터 진단 함수 (콘솔에서 debugProductionData() 실행)
     window.debugProductionData = function() {
       console.log('=== 📊 생산실적 데이터 진단 ===');
