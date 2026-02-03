@@ -61,18 +61,19 @@ function SortableHeader({
   sortKey,
   sortConfig,
   onSort,
-  align = 'left'
+  align = 'center'
 }: {
   label: string
   sortKey: string
   sortConfig: SortConfig
   onSort: (key: string) => void
-  align?: 'left' | 'right'
+  align?: 'left' | 'right' | 'center'
 }) {
   const isActive = sortConfig?.key === sortKey
+  const alignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
   return (
     <th
-      className={`px-4 py-3 font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none ${align === 'right' ? 'text-right' : 'text-left'}`}
+      className={`px-4 py-3 font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none ${alignClass}`}
       onClick={() => onSort(sortKey)}
     >
       <span className="inline-flex items-center gap-1">
@@ -162,7 +163,26 @@ export default function DowntimeDashboard() {
     return result.slice(0, 20)
   }, [filteredData, reasonFilter, sortConfig])
 
-  // 설비별 비가동 분석
+  // 가동율현황 데이터에서 그룹핑 기준 키 감지 (2번째 행 제목열)
+  const groupingKey = useMemo(() => {
+    if (filteredData.length === 0) return null
+
+    // 첫 번째 데이터 항목의 키들
+    const firstItem = filteredData[0]
+    const allKeys = Object.keys(firstItem)
+
+    // 제외할 키 (메타데이터, ID, 생산일자 등)
+    const excludeFromGrouping = ['id', 'data', '생산일자', 'date', '일자']
+    const candidateKeys = allKeys.filter(k => !excludeFromGrouping.some(ex => k.toLowerCase().includes(ex.toLowerCase())))
+
+    // 2번째 키 사용 (첫 번째 유효한 키가 보통 날짜, 두 번째가 LINE/설비 등)
+    const groupKey = candidateKeys.length > 0 ? candidateKeys[0] : null
+
+    console.log('📊 비가동 집계 기준 키:', groupKey, '(후보 키:', candidateKeys.slice(0, 5).join(', '), ')')
+    return groupKey
+  }, [filteredData])
+
+  // 설비별 비가동 분석 (가동율현황 2번째 행 제목열 기준)
   const downtimeByEquipment = useMemo(() => {
     const equipMap = new Map<string, { total: number; downtime: number }>()
 
@@ -170,11 +190,17 @@ export default function DowntimeDashboard() {
     const excludeKeys = ['생산일자', '공정', '설비', 'LINE', '주/야간', '무인', '조업시간', '가동시간', '비가동합계', '시간가동율', '계획정지합계', '설비가동율', 'id', 'data']
 
     filteredData.forEach(item => {
-      // 설비명 찾기
-      const equip = String(
-        item['설비/LINE'] || item['설비(라인)명'] || item.equipment_name ||
-        item.설비명 || item.설비 || item.라인명 || '기타'
-      )
+      // 가동율현황 2번째 행 제목열 기준으로 그룹핑
+      // 감지된 groupingKey가 있으면 사용, 없으면 기존 로직
+      let equip = '기타'
+      if (groupingKey && item[groupingKey as keyof typeof item] !== undefined) {
+        equip = String(item[groupingKey as keyof typeof item])
+      } else {
+        equip = String(
+          item.LINE || item['LINE'] || item['설비/LINE'] || item['설비(라인)명'] ||
+          item.equipment_name || item.설비명 || item.설비 || item.라인명 || '기타'
+        )
+      }
 
       // 가동시간
       const operatingTime = parseFloat(String(
@@ -217,7 +243,7 @@ export default function DowntimeDashboard() {
       }))
       .sort((a, b) => b.비가동시간 - a.비가동시간) // 비가동시간 큰 순으로 정렬
       .slice(0, 15)
-  }, [filteredData])
+  }, [filteredData, groupingKey])
 
   // 총 비가동시간 계산
   const totalDowntime = useMemo(() => {
@@ -484,10 +510,10 @@ export default function DowntimeDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 sticky top-0">
                 <tr>
-                  <SortableHeader label="비가동 사유" sortKey="name" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortableHeader label="시간(분)" sortKey="value" sortConfig={sortConfig} onSort={handleSort} align="right" />
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">비율</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">그래프</th>
+                  <SortableHeader label="비가동 사유" sortKey="name" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="시간(분)" sortKey="value" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <th className="text-center px-4 py-3 font-semibold text-slate-600">비율</th>
+                  <th className="text-center px-4 py-3 font-semibold text-slate-600">그래프</th>
                 </tr>
               </thead>
               <tbody>
@@ -495,7 +521,7 @@ export default function DowntimeDashboard() {
                   const percent = totalDowntime > 0 ? (item.value / totalDowntime) * 100 : 0
                   return (
                     <tr key={item.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                      <td className="px-4 py-3 font-medium text-slate-700">{item.name}</td>
+                      <td className="px-4 py-3 font-medium text-slate-700 text-left">{item.name}</td>
                       <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatNumber(item.value)}</td>
                       <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{percent.toFixed(1)}%</td>
                       <td className="px-4 py-3">

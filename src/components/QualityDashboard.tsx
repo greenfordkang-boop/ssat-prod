@@ -471,30 +471,30 @@ export default function QualityDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 sticky top-0">
                 <tr>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">순위</th>
-                  <SortableHeader label="품목명" sortKey="product" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortableHeader label="공정" sortKey="process" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortableHeader label="생산수량" sortKey="production" sortConfig={sortConfig} onSort={handleSort} align="right" />
-                  <SortableHeader label="양품수량" sortKey="good" sortConfig={sortConfig} onSort={handleSort} align="right" />
-                  <SortableHeader label="불량수량" sortKey="defect" sortConfig={sortConfig} onSort={handleSort} align="right" />
-                  <SortableHeader label="불량금액" sortKey="defectAmount" sortConfig={sortConfig} onSort={handleSort} align="right" />
-                  <SortableHeader label="불량율" sortKey="defectRate" sortConfig={sortConfig} onSort={handleSort} align="right" />
-                  <SortableHeader label="수율" sortKey="yieldRate" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                  <th className="text-center px-4 py-3 font-semibold text-slate-600">순위</th>
+                  <SortableHeader label="품목명" sortKey="product" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="공정" sortKey="process" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="생산수량" sortKey="production" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="양품수량" sortKey="good" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="불량수량" sortKey="defect" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="불량금액" sortKey="defectAmount" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="불량율" sortKey="defectRate" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="수율" sortKey="yieldRate" sortConfig={sortConfig} onSort={handleSort} align="center" />
                   <th className="text-center px-4 py-3 font-semibold text-slate-600">상태</th>
                 </tr>
               </thead>
               <tbody>
                 {productDefects.map((item, idx) => (
                   <tr key={item.product} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                    <td className="px-4 py-3 text-slate-600">{idx + 1}</td>
-                    <td className="px-4 py-3 font-medium text-slate-700 max-w-[200px] truncate" title={item.product}>
+                    <td className="px-4 py-3 text-center text-slate-600">{idx + 1}</td>
+                    <td className="px-4 py-3 font-medium text-slate-700 text-left max-w-[200px] truncate" title={item.product}>
                       {item.product}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{item.process}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{item.process}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(item.production)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(item.good)}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(item.defect)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(Math.round(item.defectAmount))}원</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(Math.round(item.defectAmount))}원</td>
                     <td className="px-4 py-3 text-right tabular-nums">{item.defectRate.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right tabular-nums">{item.yieldRate.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-center">

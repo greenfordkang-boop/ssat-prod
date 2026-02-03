@@ -451,13 +451,13 @@ export default function OverviewDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {['공정', '생산수량', '양품수량', '불량수량', '불량금액', '시간가동율', '성능가동율', '양품율', '종합효율(OEE)'].map(field => (
+                  {['공정', '생산수량', '양품수량', '불량수량', '불량금액', '시간가동율', '성능가동율', '양품율', '종합효율(OEE)'].map((field, idx) => (
                     <th
                       key={field}
                       onClick={() => handleSort(field)}
-                      className="text-left px-4 py-3 font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 transition"
+                      className={`px-4 py-3 font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 transition whitespace-nowrap ${idx === 0 ? 'text-center' : 'text-center'}`}
                     >
-                      <div className="flex items-center gap-1">
+                      <div className={`flex items-center gap-1 ${idx === 0 ? 'justify-center' : 'justify-center'}`}>
                         {field}
                         {sortField === field && (
                           <span className="text-blue-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
@@ -470,7 +470,7 @@ export default function OverviewDashboard() {
               <tbody>
                 {filteredProcessOEE.map((row, idx) => (
                   <tr key={row.공정} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                    <td className="px-4 py-3 font-medium text-slate-700">{row.공정}</td>
+                    <td className="px-4 py-3 font-medium text-slate-700 text-center">{row.공정}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.생산수량)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.양품수량)}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-red-600">{formatNumber(row.불량수량)}</td>
@@ -478,7 +478,7 @@ export default function OverviewDashboard() {
                     <td className="px-4 py-3 text-right tabular-nums">{row.시간가동율.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right tabular-nums">{row.성능가동율.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right tabular-nums">{row.양품율.toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-semibold text-blue-600">
+                    <td className="px-4 py-3 text-right tabular-nums font-semibold text-emerald-600">
                       {row['종합효율(OEE)'].toFixed(1)}%
                     </td>
                   </tr>
