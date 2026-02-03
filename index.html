@@ -1669,9 +1669,18 @@
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         const newData = parseCTCSV(e.target.result);
         if (newData.length > 0) {
+          // 🔄 Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
+          if (supabaseConnected) {
+            const supabaseData = await loadFromSupabase('ct_data');
+            if (supabaseData && supabaseData.length > 0) {
+              state.ctData = supabaseData;
+              console.log('📥 Supabase에서 최신 CT 데이터 로드:', supabaseData.length + '건');
+            }
+          }
+
           // 업로드된 데이터에 공정명 강제 지정 (파일에 공정구분이 없거나 다를 경우 대비)
           const processedData = newData.map(d => ({
             ...d,
@@ -1679,13 +1688,19 @@
           }));
 
           // 기존 데이터에서 해당 공정 데이터 제거 후 새 데이터 추가
-          const otherProcessData = state.ctData.filter(d => d.process !== processName);
+          const otherProcessData = (state.ctData || []).filter(d => d.process !== processName);
           state.ctData = [...otherProcessData, ...processedData];
           saveCTToStorage(state.ctData);
 
-          alert(`${processName} 공정 CT 데이터 ${processedData.length}건이 업로드되었습니다.`);
+          alert(`${processName} 공정 CT 데이터 ${processedData.length}건이 업로드되었습니다.\n(전체 CT: ${state.ctData.length}건)`);
           render();
           setTimeout(() => { createCharts(); initTableSort(); }, 100);
+
+          // 🔄 Supabase 동기화
+          if (supabaseConnected) {
+            await saveToSupabase('ct_data', state.ctData);
+            console.log('✅ CT 데이터 Supabase 동기화 완료:', state.ctData.length + '건');
+          }
         } else {
           alert('유효한 CT 데이터가 없습니다.');
         }
@@ -1695,12 +1710,17 @@
     }
 
     // 공정별 CT 데이터 삭제
-    function deleteCTByProcess(processName) {
+    async function deleteCTByProcess(processName) {
       if (!confirm(`${processName} 공정 CT 데이터를 삭제하시겠습니까?`)) return;
       state.ctData = state.ctData.filter(d => d.process !== processName);
       saveCTToStorage(state.ctData);
       render();
       setTimeout(() => { createCharts(); initTableSort(); }, 100);
+      // 🔄 Supabase 동기화
+      if (supabaseConnected) {
+        await saveToSupabase('ct_data', state.ctData);
+        console.log('✅ CT 데이터 삭제 후 Supabase 동기화 완료');
+      }
     }
 
     // 조립자재불량 CSV 파싱
