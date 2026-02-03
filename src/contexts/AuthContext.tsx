@@ -58,10 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 세션 체크
+  // 세션 체크 및 Auth 상태 구독
   useEffect(() => {
     let isMounted = true
 
+    // 초기 세션 체크
     const checkSession = async () => {
       try {
         console.log('세션 체크 시작...')
@@ -108,34 +109,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // 5초 타임아웃 - 세션 체크가 오래 걸리면 강제로 로딩 종료
-    const timeout = setTimeout(() => {
-      if (isMounted && loading) {
-        console.warn('세션 체크 타임아웃')
-        setLoading(false)
-      }
-    }, 5000)
-
     checkSession()
 
-    return () => {
-      isMounted = false
-      clearTimeout(timeout)
-    }
-
-    // Auth 상태 변경 구독
+    // Auth 상태 변경 구독 (로그인/로그아웃 감지)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth 상태 변경:', event)
       if (event === 'SIGNED_IN' && session?.user) {
         const userProfile = await loadProfile(session.user.id)
-        setUser(session.user)
-        setProfile(userProfile)
+        if (isMounted) {
+          setUser(session.user)
+          setProfile(userProfile)
+        }
       } else if (event === 'SIGNED_OUT') {
-        setUser(null)
-        setProfile(null)
+        if (isMounted) {
+          setUser(null)
+          setProfile(null)
+        }
       }
     })
 
-    return () => subscription.unsubscribe()
+    // Cleanup
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   // 로그인
