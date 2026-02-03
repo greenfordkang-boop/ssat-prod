@@ -764,6 +764,7 @@
     let syncInterval = null;
     const SYNC_INTERVAL_MS = 30000; // 30초마다 자동 동기화
     let lastSyncTime = 0;
+    let isUploading = false;  // 🔴 업로드 중 플래그 (동기화 방지)
 
     // Supabase Realtime 구독 설정
     async function setupRealtimeSubscription() {
@@ -841,6 +842,11 @@
     // Supabase에서 데이터 새로고침 (UI 업데이트 포함)
     // 데이터 손실 방지: Supabase 데이터가 로컬보다 많을 때만 업데이트
     async function refreshDataFromSupabase() {
+      // 🔴 업로드 중에는 동기화 건너뛰기 (데이터 덮어쓰기 방지)
+      if (isUploading) {
+        console.log('⏸️ 업로드 중 - 동기화 건너뜀');
+        return;
+      }
       if (!supabaseConnected || !state.isAuthenticated) return;
 
       const now = Date.now();
@@ -1670,40 +1676,45 @@
 
       const reader = new FileReader();
       reader.onload = async (e) => {
-        const newData = parseCTCSV(e.target.result);
-        if (newData.length > 0) {
-          // 🔄 Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
-          if (supabaseConnected) {
-            const supabaseData = await loadFromSupabase('ct_data');
-            if (supabaseData && supabaseData.length > 0) {
-              state.ctData = supabaseData;
-              console.log('📥 Supabase에서 최신 CT 데이터 로드:', supabaseData.length + '건');
+        isUploading = true;
+        try {
+          const newData = parseCTCSV(e.target.result);
+          if (newData.length > 0) {
+            // 🔄 Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
+            if (supabaseConnected) {
+              const supabaseData = await loadFromSupabase('ct_data');
+              if (supabaseData && supabaseData.length > 0) {
+                state.ctData = supabaseData;
+                console.log('📥 Supabase에서 최신 CT 데이터 로드:', supabaseData.length + '건');
+              }
             }
+
+            // 업로드된 데이터에 공정명과 월 정보 강제 지정
+            const processedData = newData.map(d => ({
+              ...d,
+              process: processName,
+              month: state.selectedMonth  // 🔴 현재 선택된 월 저장
+            }));
+
+            // 기존 데이터에서 해당 공정 + 해당 월 데이터 제거 후 새 데이터 추가
+            const otherProcessData = (state.ctData || []).filter(d => !(d.process === processName && d.month === state.selectedMonth));
+            state.ctData = [...otherProcessData, ...processedData];
+            saveCTToStorage(state.ctData);
+
+            alert(`${state.selectedMonth}월 ${processName} 공정 CT 데이터 ${processedData.length}건이 업로드되었습니다.\n(전체 CT: ${state.ctData.length}건)`);
+            render();
+            setTimeout(() => { createCharts(); initTableSort(); }, 100);
+
+            // 🔄 Supabase 동기화
+            if (supabaseConnected) {
+              await saveToSupabase('ct_data', state.ctData);
+              console.log('✅ CT 데이터 Supabase 동기화 완료:', state.ctData.length + '건');
+            }
+          } else {
+            alert('유효한 CT 데이터가 없습니다.');
           }
-
-          // 업로드된 데이터에 공정명과 월 정보 강제 지정
-          const processedData = newData.map(d => ({
-            ...d,
-            process: processName,
-            month: state.selectedMonth  // 🔴 현재 선택된 월 저장
-          }));
-
-          // 기존 데이터에서 해당 공정 + 해당 월 데이터 제거 후 새 데이터 추가
-          const otherProcessData = (state.ctData || []).filter(d => !(d.process === processName && d.month === state.selectedMonth));
-          state.ctData = [...otherProcessData, ...processedData];
-          saveCTToStorage(state.ctData);
-
-          alert(`${state.selectedMonth}월 ${processName} 공정 CT 데이터 ${processedData.length}건이 업로드되었습니다.\n(전체 CT: ${state.ctData.length}건)`);
-          render();
-          setTimeout(() => { createCharts(); initTableSort(); }, 100);
-
-          // 🔄 Supabase 동기화
-          if (supabaseConnected) {
-            await saveToSupabase('ct_data', state.ctData);
-            console.log('✅ CT 데이터 Supabase 동기화 완료:', state.ctData.length + '건');
-          }
-        } else {
-          alert('유효한 CT 데이터가 없습니다.');
+        } finally {
+          isUploading = false;
         }
       };
       reader.readAsText(file, 'UTF-8');
@@ -7636,33 +7647,43 @@
 
       const reader = new FileReader();
       reader.onload = async (e) => {
-        const newData = parseCSV(e.target.result);
+        // 🔴 업로드 시작 - 동기화 방지
+        isUploading = true;
+        console.log('📤 업로드 시작 - 동기화 일시 중지');
 
-        // 새 데이터에서 월 추출
-        const newMonths = getMonthsFromData(newData);
-        const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
+        try {
+          const newData = parseCSV(e.target.result);
 
-        // Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
-        if (supabaseConnected) {
-          const supabaseData = await loadFromSupabase('production_data');
-          if (supabaseData && supabaseData.length > 0) {
-            state.rawData = supabaseData;
-            console.log('📥 Supabase에서 최신 생산 데이터 로드:', supabaseData.length + '건');
+          // 새 데이터에서 월 추출
+          const newMonths = getMonthsFromData(newData);
+          const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
+
+          // Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
+          if (supabaseConnected) {
+            const supabaseData = await loadFromSupabase('production_data');
+            if (supabaseData && supabaseData.length > 0) {
+              state.rawData = supabaseData;
+              console.log('📥 Supabase에서 최신 생산 데이터 로드:', supabaseData.length + '건');
+            }
           }
-        }
 
-        // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
-        const filteredExisting = removeMonthsFromData(state.rawData, newMonths);
-        state.rawData = [...filteredExisting, ...newData];
+          // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
+          const filteredExisting = removeMonthsFromData(state.rawData, newMonths);
+          state.rawData = [...filteredExisting, ...newData];
 
-        saveToStorage(state.rawData);
-        render();
-        setTimeout(() => { createCharts(); initTableSort(); }, 100);
-        alert(`${monthNames} 데이터 ${newData.length}건이 저장되었습니다.\n(총 ${state.rawData.length}건)`);
-        // Supabase 동기화 및 로그 기록
-        if (supabaseConnected) {
-          await saveToSupabase('production_data', state.rawData);
-          await logAccess('data_upload', { type: 'production_data', count: newData.length, filename: file.name });
+          saveToStorage(state.rawData);
+          render();
+          setTimeout(() => { createCharts(); initTableSort(); }, 100);
+          alert(`${monthNames} 데이터 ${newData.length}건이 저장되었습니다.\n(총 ${state.rawData.length}건)`);
+          // Supabase 동기화 및 로그 기록
+          if (supabaseConnected) {
+            await saveToSupabase('production_data', state.rawData);
+            await logAccess('data_upload', { type: 'production_data', count: newData.length, filename: file.name });
+          }
+        } finally {
+          // 🔴 업로드 완료 - 동기화 재개
+          isUploading = false;
+          console.log('✅ 업로드 완료 - 동기화 재개');
         }
       };
       reader.readAsText(file, 'UTF-8');
@@ -7680,33 +7701,38 @@
 
       const reader = new FileReader();
       reader.onload = async (e) => {
-        const newData = parseAvailabilityCSV(e.target.result);
+        isUploading = true;
+        try {
+          const newData = parseAvailabilityCSV(e.target.result);
 
-        // 새 데이터에서 월 추출
-        const newMonths = getMonthsFromData(newData);
-        const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
+          // 새 데이터에서 월 추출
+          const newMonths = getMonthsFromData(newData);
+          const monthNames = Array.from(newMonths).sort().map(m => m + '월').join(', ');
 
-        // Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
-        if (supabaseConnected) {
-          const supabaseData = await loadFromSupabase('availability_data');
-          if (supabaseData && supabaseData.length > 0) {
-            state.availabilityData = supabaseData;
-            console.log('📥 Supabase에서 최신 가동율 데이터 로드:', supabaseData.length + '건');
+          // Supabase에서 최신 데이터 먼저 로드 (다른 컴퓨터에서 업로드한 데이터 포함)
+          if (supabaseConnected) {
+            const supabaseData = await loadFromSupabase('availability_data');
+            if (supabaseData && supabaseData.length > 0) {
+              state.availabilityData = supabaseData;
+              console.log('📥 Supabase에서 최신 가동율 데이터 로드:', supabaseData.length + '건');
+            }
           }
-        }
 
-        // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
-        const filteredExisting = removeMonthsFromData(state.availabilityData, newMonths);
-        state.availabilityData = [...filteredExisting, ...newData];
+          // 기존 데이터에서 해당 월 데이터 제거 후 새 데이터 병합
+          const filteredExisting = removeMonthsFromData(state.availabilityData, newMonths);
+          state.availabilityData = [...filteredExisting, ...newData];
 
-        saveAvailabilityToStorage(state.availabilityData);
-        render();
-        setTimeout(() => { createCharts(); initTableSort(); }, 100);
-        alert(`가동율 ${monthNames} 데이터 ${newData.length}건이 저장되었습니다.\n(총 ${state.availabilityData.length}건)`);
-        // Supabase 동기화 및 로그 기록
-        if (supabaseConnected) {
-          await saveToSupabase('availability_data', state.availabilityData);
-          await logAccess('data_upload', { type: 'availability_data', count: newData.length, filename: file.name });
+          saveAvailabilityToStorage(state.availabilityData);
+          render();
+          setTimeout(() => { createCharts(); initTableSort(); }, 100);
+          alert(`가동율 ${monthNames} 데이터 ${newData.length}건이 저장되었습니다.\n(총 ${state.availabilityData.length}건)`);
+          // Supabase 동기화 및 로그 기록
+          if (supabaseConnected) {
+            await saveToSupabase('availability_data', state.availabilityData);
+            await logAccess('data_upload', { type: 'availability_data', count: newData.length, filename: file.name });
+          }
+        } finally {
+          isUploading = false;
         }
       };
       reader.readAsText(file, 'UTF-8');
