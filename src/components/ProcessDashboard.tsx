@@ -28,6 +28,13 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     let defect = 0
     let workTime = 0
 
+    // 디버깅: 생산 데이터 구조 확인
+    if (processData.length > 0) {
+      console.log('📊 생산 데이터 샘플:', processData[0])
+      console.log('📊 생산 데이터 키:', Object.keys(processData[0]))
+      console.log('📊 불량수량 값:', processData[0]['불량수량'])
+    }
+
     processData.forEach(row => {
       production += parseNumber(row.생산수량)
       good += parseNumber(row.양품수량)
@@ -107,9 +114,17 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // CT 데이터 분석 (해당 공정)
   const ctAnalysis = useMemo(() => {
+    // 디버깅: CT 데이터 구조 확인
+    if (data.ctData.length > 0) {
+      console.log('🔧 CT 데이터 샘플:', data.ctData[0])
+      console.log('🔧 CT 데이터 키:', Object.keys(data.ctData[0]))
+      console.log('🔧 찾는 공정명:', processName)
+    }
+
     const processCT = data.ctData.filter(row =>
       row.공정 === processName || row.process === processName
     )
+    console.log('🔧 필터링된 CT 데이터:', processCT.length, '건')
 
     return processCT.map(row => ({
       equipment: row['설비(라인)명'] || row.equipment || row.설비명 || '기타',
@@ -124,6 +139,11 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // 검포장 데이터
   const packagingData = useMemo(() => {
+    // 디버깅: 검포장 데이터 확인
+    if (data.packagingStatusData.length > 0) {
+      console.log('📦 검포장 데이터 샘플:', data.packagingStatusData[0])
+      console.log('📦 검포장 데이터 키:', Object.keys(data.packagingStatusData[0]))
+    }
     return data.packagingStatusData.filter(row =>
       row.공정 === processName || !row.공정
     ).slice(0, 50)
