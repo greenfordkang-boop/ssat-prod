@@ -72,21 +72,36 @@ function SortableHeader({
   )
 }
 
+// 필드 값 가져오기 (다양한 필드명 지원)
+const getFieldFromPrice = (p: { [key: string]: string | number | undefined }, ...keys: string[]) => {
+  for (const key of keys) {
+    if (p[key] !== undefined && p[key] !== null && p[key] !== '') {
+      return String(p[key]).trim()
+    }
+  }
+  return ''
+}
+
 // 단가 데이터에서 매칭하는 헬퍼 함수
 const findPriceData = (
   priceData: { [key: string]: string | number | undefined }[],
   itemCode?: string,
   itemName?: string
 ) => {
+  if (!priceData || priceData.length === 0) return undefined
+
+  const searchCode = itemCode ? String(itemCode).trim() : ''
+  const searchName = itemName ? String(itemName).trim() : ''
+
   return priceData.find(p => {
     // 품목코드 매칭 (다양한 필드명 지원)
-    const priceItemCode = p.품목코드 || p.품번 || p.품목번호 || p.itemCode || p.item_code || p.code
-    if (itemCode && priceItemCode && String(priceItemCode) === String(itemCode)) {
+    const priceItemCode = getFieldFromPrice(p, '품목코드', '품번', '품목번호', 'itemCode', 'item_code', 'code', 'ITEM_CODE', 'PART_NO', 'partNo', 'part_no')
+    if (searchCode && priceItemCode && priceItemCode === searchCode) {
       return true
     }
     // 품목명 매칭 (다양한 필드명 지원)
-    const priceItemName = p.품목명 || p.품명 || p.productName || p.product_name || p.name
-    if (itemName && priceItemName && String(priceItemName) === String(itemName)) {
+    const priceItemName = getFieldFromPrice(p, '품목명', '품명', 'productName', 'product_name', 'name', 'ITEM_NAME', 'PRODUCT', 'itemName', 'item_name')
+    if (searchName && priceItemName && priceItemName === searchName) {
       return true
     }
     return false
@@ -95,7 +110,10 @@ const findPriceData = (
 
 // 단가 값 추출 헬퍼 함수
 const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
-  const priceVal = priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice || priceItem.unit_price || 0
+  const priceVal = priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice ||
+                   priceItem.unit_price || priceItem.PRICE || priceItem.UNIT_PRICE ||
+                   priceItem['단 가'] || priceItem['판매단가'] || priceItem['구매단가'] ||
+                   priceItem.cost || priceItem.COST || 0
   return parseNumber(priceVal)
 }
 

@@ -48,6 +48,16 @@ const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
 // 차트 색상
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1']
 
+// 필드 값 가져오기 (다양한 필드명 지원)
+const getFieldFromPrice = (p: { [key: string]: string | number | undefined }, ...keys: string[]) => {
+  for (const key of keys) {
+    if (p[key] !== undefined && p[key] !== null && p[key] !== '') {
+      return String(p[key]).trim()
+    }
+  }
+  return ''
+}
+
 // 단가 데이터에서 매칭하는 헬퍼 함수
 const findPriceData = (
   priceData: { [key: string]: string | number | undefined }[],
@@ -55,20 +65,26 @@ const findPriceData = (
   itemName?: string,
   customerPN?: string
 ) => {
+  if (!priceData || priceData.length === 0) return undefined
+
+  const searchCode = itemCode ? String(itemCode).trim() : ''
+  const searchName = itemName ? String(itemName).trim() : ''
+  const searchPN = customerPN ? String(customerPN).trim() : ''
+
   return priceData.find(p => {
     // 품목코드 매칭 (다양한 필드명 지원)
-    const priceItemCode = p.품목코드 || p.품번 || p.품목번호 || p.itemCode || p.item_code || p.code || p.ITEM_CODE || p.PART_NO
-    if (itemCode && priceItemCode && String(priceItemCode).trim() === String(itemCode).trim()) {
+    const priceItemCode = getFieldFromPrice(p, '품목코드', '품번', '품목번호', 'itemCode', 'item_code', 'code', 'ITEM_CODE', 'PART_NO', 'partNo', 'part_no')
+    if (searchCode && priceItemCode && priceItemCode === searchCode) {
       return true
     }
     // 고객사 P/N 매칭
-    const priceCustPN = p['고객사 P/N'] || p['고객P/N'] || p.customerPN || p.customer_pn || p.CUST_PN
-    if (customerPN && priceCustPN && String(priceCustPN).trim() === String(customerPN).trim()) {
+    const priceCustPN = getFieldFromPrice(p, '고객사 P/N', '고객P/N', '고객사P/N', 'customerPN', 'customer_pn', 'CUST_PN', 'custPN')
+    if (searchPN && priceCustPN && priceCustPN === searchPN) {
       return true
     }
     // 품목명 매칭 (다양한 필드명 지원)
-    const priceItemName = p.품목명 || p.품명 || p.productName || p.product_name || p.name || p.ITEM_NAME || p.PRODUCT
-    if (itemName && priceItemName && String(priceItemName).trim() === String(itemName).trim()) {
+    const priceItemName = getFieldFromPrice(p, '품목명', '품명', 'productName', 'product_name', 'name', 'ITEM_NAME', 'PRODUCT', 'itemName', 'item_name')
+    if (searchName && priceItemName && priceItemName === searchName) {
       return true
     }
     return false
@@ -77,8 +93,11 @@ const findPriceData = (
 
 // 단가 값 추출 헬퍼 함수
 const getPriceValue = (priceItem: { [key: string]: string | number | undefined }) => {
+  // 다양한 필드명에서 단가 찾기
   const priceVal = priceItem.단가 || priceItem.가격 || priceItem.price || priceItem.unitPrice ||
-                   priceItem.unit_price || priceItem.PRICE || priceItem.UNIT_PRICE || 0
+                   priceItem.unit_price || priceItem.PRICE || priceItem.UNIT_PRICE ||
+                   priceItem['단 가'] || priceItem['판매단가'] || priceItem['구매단가'] ||
+                   priceItem.cost || priceItem.COST || 0
   return parseNumber(priceVal)
 }
 
@@ -317,6 +336,26 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
     if (data.priceData.length === 0) return []
     return Object.keys(data.priceData[0]).filter(key => key !== 'id' && key !== 'data').slice(0, 10)
   }, [data.priceData])
+
+  // 디버그: 단가표 필드명 확인
+  const priceFieldInfo = useMemo(() => {
+    if (data.priceData.length === 0) return { fields: [], sample: null }
+    const fields = Object.keys(data.priceData[0]).filter(key => key !== 'id' && key !== 'data')
+    return { fields, sample: data.priceData[0] }
+  }, [data.priceData])
+
+  // 콘솔에 디버그 정보 출력
+  useMemo(() => {
+    if (data.priceData.length > 0) {
+      console.log('📋 단가표 필드명:', priceFieldInfo.fields)
+      console.log('📋 단가표 샘플 데이터:', priceFieldInfo.sample)
+    }
+    if (data.wipInventoryData.length > 0) {
+      const sampleInv = data.wipInventoryData[0]
+      console.log('📦 재고 데이터 필드명:', Object.keys(sampleInv).filter(k => k !== 'id' && k !== 'data'))
+      console.log('📦 재고 샘플 데이터:', sampleInv)
+    }
+  }, [data.priceData, data.wipInventoryData, priceFieldInfo])
 
   // 정렬 핸들러
   const handleSort = (key: string) => {
