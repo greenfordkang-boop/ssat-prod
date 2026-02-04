@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useData } from '@/contexts/DataContext'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts'
 import { formatNumber, parseNumber, PROCESS_MAPPING, CHART_COLORS } from '@/lib/utils'
 
 interface ProcessDashboardProps {
@@ -114,9 +114,11 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   const [equipSort, setEquipSort] = useState<SortConfig>(null)
   const [uphSort, setUphSort] = useState<SortConfig>(null)
   const [ctSort, setCtSort] = useState<SortConfig>(null)
+  const [materialSort, setMaterialSort] = useState<SortConfig>(null)
 
   // 필터 상태
   const [equipFilter, setEquipFilter] = useState('')
+  const [materialFilter, setMaterialFilter] = useState('')
 
   // 공정명 변환
   const processName = PROCESS_MAPPING[process as keyof typeof PROCESS_MAPPING] || process
@@ -568,11 +570,110 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     ).slice(0, 50)
   }, [data.repairStatusData, processName])
 
-  // 자재불량 데이터
+  // 자재불량 데이터 (정렬/필터 적용)
   const materialDefectData = useMemo(() => {
-    return data.materialDefectData.filter(row =>
+    let result = data.materialDefectData.filter(row =>
       row.공정 === processName || !row.공정
-    ).slice(0, 50)
+    )
+
+    // 필터 적용
+    if (materialFilter) {
+      result = result.filter(row => {
+        const searchStr = materialFilter.toLowerCase()
+        return Object.values(row).some(val =>
+          String(val || '').toLowerCase().includes(searchStr)
+        )
+      })
+    }
+
+    // 정렬 적용
+    if (materialSort) {
+      result = [...result].sort((a, b) => {
+        const aVal = a[materialSort.key as keyof typeof a]
+        const bVal = b[materialSort.key as keyof typeof b]
+        const aNum = parseNumber(aVal as string | number)
+        const bNum = parseNumber(bVal as string | number)
+
+        // 숫자 비교 가능하면 숫자로
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return materialSort.direction === 'asc' ? aNum - bNum : bNum - aNum
+        }
+        // 문자열 비교
+        const cmp = String(aVal || '').localeCompare(String(bVal || ''))
+        return materialSort.direction === 'asc' ? cmp : -cmp
+      })
+    }
+
+    return result.slice(0, 100)
+  }, [data.materialDefectData, processName, materialFilter, materialSort])
+
+  // 자재불량 통계 (대시보드용)
+  const materialDefectStats = useMemo(() => {
+    const allData = data.materialDefectData.filter(row =>
+      row.공정 === processName || !row.공정
+    )
+
+    if (allData.length === 0) return null
+
+    // 컬럼 키 추출 (숫자 값이 있는 컬럼 = 불량 유형)
+    const sampleRow = allData[0]
+    const keys = Object.keys(sampleRow)
+    const defectTypeKeys = keys.filter(k => {
+      if (['id', '규격', '부품명', '품목명', '품목코드', '공정'].includes(k)) return false
+      // 숫자 값이 있는 컬럼만
+      return allData.some(row => parseNumber(row[k] as string | number) > 0)
+    })
+
+    // 불량 유형별 합계
+    const defectByType: Record<string, number> = {}
+    defectTypeKeys.forEach(key => {
+      defectByType[key] = allData.reduce((sum, row) =>
+        sum + parseNumber(row[key] as string | number), 0
+      )
+    })
+
+    // 총 불량 수량
+    const totalDefect = Object.values(defectByType).reduce((a, b) => a + b, 0)
+
+    // 파이 차트용 데이터 (상위 6개 + 기타)
+    const sortedTypes = Object.entries(defectByType)
+      .filter(([, val]) => val > 0)
+      .sort((a, b) => b[1] - a[1])
+
+    const pieData = sortedTypes.slice(0, 6).map(([name, value]) => ({ name, value }))
+    const otherSum = sortedTypes.slice(6).reduce((sum, [, val]) => sum + val, 0)
+    if (otherSum > 0) {
+      pieData.push({ name: '기타', value: otherSum })
+    }
+
+    // 상위 불량 유형
+    const topDefectType = sortedTypes[0] || ['없음', 0]
+
+    // 부품별 불량 건수
+    const defectByPart: Record<string, number> = {}
+    allData.forEach(row => {
+      const partName = String(row.부품명 || row.품목명 || '기타')
+      const rowTotal = defectTypeKeys.reduce((sum, key) =>
+        sum + parseNumber(row[key] as string | number), 0
+      )
+      defectByPart[partName] = (defectByPart[partName] || 0) + rowTotal
+    })
+
+    const topParts = Object.entries(defectByPart)
+      .filter(([, val]) => val > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, value]) => ({ name: name.length > 15 ? name.slice(0, 15) + '...' : name, value }))
+
+    return {
+      totalItems: allData.length,
+      totalDefect,
+      defectTypeCount: sortedTypes.filter(([, v]) => v > 0).length,
+      topDefectType: topDefectType[0],
+      topDefectValue: topDefectType[1] as number,
+      pieData,
+      topParts
+    }
   }, [data.materialDefectData, processName])
 
   // 정렬 핸들러
@@ -977,54 +1078,151 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       )}
 
       {subMenu === 'material-defect' && (
-        <div className="bg-white rounded-xl p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold flex items-center gap-2">
-              자재불량 현황
-              <span className="text-sm font-normal text-slate-400">({materialDefectData.length}건)</span>
-            </h3>
-            <div className="flex items-center gap-3">
-              {materialDefectData.length > 0 && (
-                <button
-                  onClick={() => downloadExcel(materialDefectData as Record<string, unknown>[], `${processName}_자재불량현황`)}
-                  className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
-                >
-                  📥 엑셀
-                </button>
-              )}
-              <button
-                onClick={() => setShowMaterialTable(!showMaterialTable)}
-                className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 bg-slate-100 rounded-lg"
-              >
-                {showMaterialTable ? '접기' : '펼치기'}
-              </button>
-            </div>
-          </div>
-          {materialDefectData.length === 0 ? (
-            <p className="text-gray-500">자재불량 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
-          ) : showMaterialTable && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50">
-                    {Object.keys(materialDefectData[0] || {}).slice(0, 8).map(key => (
-                      <th key={key} className="px-4 py-3 text-left font-semibold text-slate-600">{key}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {materialDefectData.map((row, idx) => (
-                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                      {Object.values(row).slice(0, 8).map((val, i) => (
-                        <td key={i} className="px-4 py-3">{String(val || '')}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <>
+          {/* 자재불량 대시보드 카드 */}
+          {materialDefectStats && (
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-5 border border-orange-200">
+                <div className="text-xs font-semibold text-orange-600 uppercase mb-2">총 불량 수량</div>
+                <div className="text-2xl font-bold text-orange-700">{formatNumber(materialDefectStats.totalDefect)}</div>
+                <div className="text-sm text-orange-500 mt-1">{materialDefectStats.totalItems}개 품목</div>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-5 border border-red-200">
+                <div className="text-xs font-semibold text-red-600 uppercase mb-2">최다 불량 유형</div>
+                <div className="text-lg font-bold text-red-700 truncate" title={materialDefectStats.topDefectType}>
+                  {materialDefectStats.topDefectType}
+                </div>
+                <div className="text-sm text-red-500 mt-1">{formatNumber(materialDefectStats.topDefectValue)}건</div>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
+                <div className="text-xs font-semibold text-purple-600 uppercase mb-2">불량 유형 수</div>
+                <div className="text-2xl font-bold text-purple-700">{materialDefectStats.defectTypeCount}</div>
+                <div className="text-sm text-purple-500 mt-1">종류</div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
+                <div className="text-xs font-semibold text-blue-600 uppercase mb-2">품목당 평균 불량</div>
+                <div className="text-2xl font-bold text-blue-700">
+                  {materialDefectStats.totalItems > 0 ? formatNumber(Math.round(materialDefectStats.totalDefect / materialDefectStats.totalItems)) : 0}
+                </div>
+                <div className="text-sm text-blue-500 mt-1">건/품목</div>
+              </div>
             </div>
           )}
-        </div>
+
+          {/* 차트 영역 */}
+          {materialDefectStats && materialDefectStats.pieData.length > 0 && (
+            <div className="grid grid-cols-2 gap-6">
+              {/* 불량 유형별 파이차트 */}
+              <div className="bg-white rounded-xl p-6 border border-gray-100">
+                <h3 className="text-base font-semibold mb-4">불량 유형별 분포</h3>
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie
+                      data={materialDefectStats.pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {materialDefectStats.pieData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS.pastel[index % CHART_COLORS.pastel.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => formatNumber(v as number)} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 부품별 불량 TOP 5 */}
+              <div className="bg-white rounded-xl p-6 border border-gray-100">
+                <h3 className="text-base font-semibold mb-4">부품별 불량 TOP 5</h3>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={materialDefectStats.topParts} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis type="number" tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120} />
+                    <Tooltip formatter={(v) => formatNumber(v as number)} />
+                    <Bar dataKey="value" name="불량수량" fill={CHART_COLORS.pastel[3]} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* 자재불량 테이블 */}
+          <div className="bg-white rounded-xl p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold flex items-center gap-2">
+                자재불량 현황
+                <span className="text-sm font-normal text-slate-400">({materialDefectData.length}건)</span>
+              </h3>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  placeholder="검색..."
+                  value={materialFilter}
+                  onChange={(e) => setMaterialFilter(e.target.value)}
+                  className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg w-40"
+                />
+                {materialDefectData.length > 0 && (
+                  <button
+                    onClick={() => downloadExcel(materialDefectData as Record<string, unknown>[], `${processName}_자재불량현황`)}
+                    className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
+                  >
+                    📥 엑셀
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowMaterialTable(!showMaterialTable)}
+                  className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 bg-slate-100 rounded-lg"
+                >
+                  {showMaterialTable ? '접기' : '펼치기'}
+                </button>
+              </div>
+            </div>
+            {materialDefectData.length === 0 ? (
+              <p className="text-gray-500">자재불량 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
+            ) : showMaterialTable && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      {Object.keys(materialDefectData[0] || {}).slice(0, 10).map(key => (
+                        <SortableHeader
+                          key={key}
+                          label={key}
+                          sortKey={key}
+                          sortConfig={materialSort}
+                          onSort={(k) => handleSort(setMaterialSort, k, materialSort)}
+                        />
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {materialDefectData.map((row, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-100'}>
+                        {Object.entries(row).slice(0, 10).map(([key, val], i) => {
+                          const numVal = parseNumber(val as string | number)
+                          const isNumeric = !isNaN(numVal) && numVal > 0
+                          return (
+                            <td key={i} className={`px-4 py-3 ${isNumeric ? 'text-right font-medium text-red-600' : ''}`}>
+                              {isNumeric ? formatNumber(numVal) : String(val || '')}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* 불량 상세 팝업 모달 */}
