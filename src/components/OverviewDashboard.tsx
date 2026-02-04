@@ -145,22 +145,45 @@ export default function OverviewDashboard() {
   const [sortField, setSortField] = useState<string>('종합효율(OEE)')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
+  // 날짜 문자열에서 월 추출 헬퍼 함수
+  const extractMonthFromDate = (dateStr: string): number | null => {
+    if (!dateStr) return null
+
+    // YYYY-MM-DD 형식
+    if (dateStr.includes('-')) {
+      const match = dateStr.match(/(\d{4})-(\d{1,2})-(\d{1,2})/)
+      if (match) return parseInt(match[2])
+    }
+    // YYYY/MM/DD 또는 MM/DD/YYYY 형식
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/')
+      if (parts[0].length === 4) return parseInt(parts[1])
+      return parseInt(parts[0])
+    }
+    // YYYY.MM.DD 형식
+    if (dateStr.includes('.')) {
+      const parts = dateStr.split('.')
+      if (parts[0].length === 4 && parts.length >= 2) return parseInt(parts[1])
+    }
+    // 엑셀 시리얼 날짜 (숫자)
+    const num = parseFloat(dateStr)
+    if (!isNaN(num) && num > 40000 && num < 50000) {
+      const date = new Date((num - 25569) * 86400 * 1000)
+      return date.getMonth() + 1
+    }
+    return null
+  }
+
   // 가동율 데이터에서 공정별 시간가동율 매핑 생성
   const processAvailabilityMap = useMemo(() => {
     const map = new Map<string, { operatingTime: number; totalTime: number; availRate: number }>()
 
     // 선택된 월에 맞는 가동율 데이터 필터링
     const filteredAvail = data.availabilityData.filter(row => {
-      const dateStr = String(row.date || row.일자 || row.생산일자 || '')
-      if (!dateStr) return true
-
-      let rowMonth = null
-      if (dateStr.includes('-')) {
-        rowMonth = parseInt(dateStr.split('-')[1]) || null
-      } else if (dateStr.includes('/')) {
-        const parts = dateStr.split('/')
-        rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0])
-      }
+      // 다양한 날짜 필드명 지원
+      const dateStr = String(row.date || row.일자 || row.생산일자 || row.날짜 || row.Date || row.DATE || '')
+      const rowMonth = extractMonthFromDate(dateStr)
+      // 월을 파싱할 수 없으면 모든 월에 포함
       return !rowMonth || rowMonth === selectedMonth
     })
 
@@ -319,21 +342,29 @@ export default function OverviewDashboard() {
 
   // 월별 OEE 추이
   const monthlyOEE = useMemo(() => {
+    // 디버깅: 가동율 데이터 날짜 필드 확인
+    if (data.availabilityData.length > 0) {
+      const sample = data.availabilityData[0]
+      const dateFields = ['date', '일자', '생산일자', '날짜', 'Date', 'DATE']
+      const foundDate = dateFields.find(f => sample[f as keyof typeof sample])
+      console.log('📊 가동율 데이터 날짜 필드:', foundDate || '없음',
+        '| 샘플값:', sample[foundDate as keyof typeof sample] || '없음',
+        '| 총 레코드:', data.availabilityData.length)
+    }
+
     // 월별 시간가동율 계산 함수
     const getMonthlyAvailability = (month: number): number => {
       const monthAvailData = data.availabilityData.filter(row => {
-        const dateStr = String(row.date || row.일자 || row.생산일자 || '')
-        if (!dateStr) return false
-
-        let rowMonth = null
-        if (dateStr.includes('-')) {
-          rowMonth = parseInt(dateStr.split('-')[1]) || null
-        } else if (dateStr.includes('/')) {
-          const parts = dateStr.split('/')
-          rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0])
-        }
+        // 다양한 날짜 필드명 지원
+        const dateStr = String(row.date || row.일자 || row.생산일자 || row.날짜 || row.Date || row.DATE || '')
+        const rowMonth = extractMonthFromDate(dateStr)
         return rowMonth === month
       })
+
+      // 디버깅: 월별 필터링 결과
+      if (month === 1 || month === 2) {
+        console.log(`📊 ${month}월 가동율 데이터:`, monthAvailData.length, '건')
+      }
 
       if (monthAvailData.length === 0) return 100
 
