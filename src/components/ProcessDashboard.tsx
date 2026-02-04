@@ -66,11 +66,12 @@ function SortableHeader({
 
 // 설비/Line 필드명 추출 헬퍼 함수
 const getEquipmentName = (row: Record<string, unknown>): string => {
-  // 다양한 필드명 지원
-  const name = row['설비(라인)명'] || row['설비/라인'] || row['설비/Line'] ||
-               row['설비/LINE'] || row['설비명'] || row.LINE || row.Line ||
-               row['라인명'] || row['설비(라인)코드'] || row['설비코드'] || ''
-  return String(name) || '기타'
+  // 다양한 필드명 지원 - 순서 중요 (정확한 매칭 우선)
+  const name = row['설비/LINE'] || row['설비/Line'] || row['설비/라인'] ||
+               row['설비(라인)명'] || row['설비명'] || row.LINE || row.Line ||
+               row['라인명'] || row['설비(라인)코드'] || row['설비코드'] ||
+               row['EQUIPMENT'] || row['Equipment'] || row.equipment || ''
+  return String(name).trim() || '기타'
 }
 
 export default function ProcessDashboard({ process, subMenu }: ProcessDashboardProps) {
@@ -167,6 +168,16 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   // 설비/Line별 현황
   const equipmentStats = useMemo(() => {
     const equip: Record<string, { production: number; defect: number; time: number }> = {}
+
+    // 디버깅: 첫 번째 데이터의 키 확인
+    if (processData.length > 0) {
+      const firstRow = processData[0]
+      const keys = Object.keys(firstRow)
+      const equipKeys = keys.filter(k =>
+        k.includes('설비') || k.includes('LINE') || k.includes('Line') || k.includes('라인')
+      )
+      console.log('🏭 설비/Line 필드 확인:', equipKeys, '| 샘플값:', equipKeys.map(k => firstRow[k as keyof typeof firstRow]))
+    }
 
     processData.forEach(row => {
       const name = getEquipmentName(row as Record<string, unknown>)
