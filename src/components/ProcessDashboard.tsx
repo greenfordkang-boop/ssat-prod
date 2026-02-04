@@ -568,9 +568,25 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // 검포장 데이터 (정렬/필터 적용)
   const packagingData = useMemo(() => {
-    let result = data.packagingStatusData.filter(row =>
-      row.공정 === processName || !row.공정
-    )
+    let result = data.packagingStatusData.filter(row => {
+      // 공정 필터
+      if (row.공정 && row.공정 !== processName) return false
+
+      // 월 필터링 (날짜 필드가 있는 경우만)
+      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
+      if (dateStr) {
+        let month = 0
+        if (dateStr.includes('-')) {
+          month = parseInt(dateStr.split('-')[1], 10)
+        } else if (dateStr.includes('/')) {
+          month = parseInt(dateStr.split('/')[1], 10)
+        } else if (dateStr.length >= 6) {
+          month = parseInt(dateStr.substring(4, 6), 10)
+        }
+        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
+      }
+      return true
+    })
 
     // 필터 적용
     if (packagingFilter) {
@@ -599,13 +615,29 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result.slice(0, 100)
-  }, [data.packagingStatusData, processName, packagingFilter, packagingSort])
+  }, [data.packagingStatusData, processName, selectedMonth, packagingFilter, packagingSort])
 
   // 검포장 통계 (대시보드용)
   const packagingStats = useMemo(() => {
-    const allData = data.packagingStatusData.filter(row =>
-      row.공정 === processName || !row.공정
-    )
+    const allData = data.packagingStatusData.filter(row => {
+      // 공정 필터
+      if (row.공정 && row.공정 !== processName) return false
+
+      // 월 필터링 (날짜 필드가 있는 경우만)
+      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
+      if (dateStr) {
+        let month = 0
+        if (dateStr.includes('-')) {
+          month = parseInt(dateStr.split('-')[1], 10)
+        } else if (dateStr.includes('/')) {
+          month = parseInt(dateStr.split('/')[1], 10)
+        } else if (dateStr.length >= 6) {
+          month = parseInt(dateStr.substring(4, 6), 10)
+        }
+        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
+      }
+      return true
+    })
 
     if (allData.length === 0) return null
 
@@ -676,7 +708,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       topEquipments,
       topProducts
     }
-  }, [data.packagingStatusData, processName])
+  }, [data.packagingStatusData, processName, selectedMonth])
 
   // 불량수리 데이터
   const repairData = useMemo(() => {
@@ -687,9 +719,25 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // 자재불량 데이터 (정렬/필터 적용)
   const materialDefectData = useMemo(() => {
-    let result = data.materialDefectData.filter(row =>
-      row.공정 === processName || !row.공정
-    )
+    let result = data.materialDefectData.filter(row => {
+      // 공정 필터
+      if (row.공정 && row.공정 !== processName) return false
+
+      // 월 필터링
+      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
+      if (dateStr) {
+        let month = 0
+        if (dateStr.includes('-')) {
+          month = parseInt(dateStr.split('-')[1], 10)
+        } else if (dateStr.includes('/')) {
+          month = parseInt(dateStr.split('/')[1], 10)
+        } else if (dateStr.length >= 6) {
+          month = parseInt(dateStr.substring(4, 6), 10)
+        }
+        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
+      }
+      return true
+    })
 
     // 필터 적용
     if (materialFilter) {
@@ -720,13 +768,29 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result.slice(0, 100)
-  }, [data.materialDefectData, processName, materialFilter, materialSort])
+  }, [data.materialDefectData, processName, selectedMonth, materialFilter, materialSort])
 
   // 자재불량 통계 (대시보드용)
   const materialDefectStats = useMemo(() => {
-    const allData = data.materialDefectData.filter(row =>
-      row.공정 === processName || !row.공정
-    )
+    const allData = data.materialDefectData.filter(row => {
+      // 공정 필터
+      if (row.공정 && row.공정 !== processName) return false
+
+      // 월 필터링
+      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
+      if (dateStr) {
+        let month = 0
+        if (dateStr.includes('-')) {
+          month = parseInt(dateStr.split('-')[1], 10)
+        } else if (dateStr.includes('/')) {
+          month = parseInt(dateStr.split('/')[1], 10)
+        } else if (dateStr.length >= 6) {
+          month = parseInt(dateStr.substring(4, 6), 10)
+        }
+        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
+      }
+      return true
+    })
 
     if (allData.length === 0) return null
 
@@ -836,7 +900,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       topParts,
       dailyTrend
     }
-  }, [data.materialDefectData, processName])
+  }, [data.materialDefectData, processName, selectedMonth])
 
   // 정렬 핸들러
   const handleSort = (setter: React.Dispatch<React.SetStateAction<SortConfig>>, key: string, current: SortConfig) => {
