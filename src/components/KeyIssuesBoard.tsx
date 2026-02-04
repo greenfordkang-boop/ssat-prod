@@ -70,6 +70,10 @@ export default function KeyIssuesBoard() {
   // 필터 상태
   const [processFilter, setProcessFilter] = useState<string>('all')
 
+  // 상세 팝업 상태
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null)
+
   // 로컬 스토리지에서 설정 로드
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -529,6 +533,170 @@ export default function KeyIssuesBoard() {
     return issues.filter(i => i.process === processFilter)
   }
 
+  // 상세 팝업 열기
+  const openDetailModal = (issue: Issue) => {
+    setSelectedIssue(issue)
+    setDetailModalOpen(true)
+  }
+
+  // 선택된 이슈의 상세 데이터
+  const issueDetailData = useMemo(() => {
+    if (!selectedIssue) return []
+
+    const { metric, process, equipment, product } = selectedIssue
+
+    // 월 필터링 헬퍼
+    const filterByMonth = (row: Record<string, unknown>) => {
+      const dateStr = String(row['일자'] || row['날짜'] || row['생산일자'] || row['작업일자'] || '')
+      if (!dateStr) return true
+      let month = 0
+      if (dateStr.includes('-')) {
+        month = parseInt(dateStr.split('-')[1], 10)
+      } else if (dateStr.includes('/')) {
+        month = parseInt(dateStr.split('/')[1], 10)
+      } else if (dateStr.length >= 6) {
+        month = parseInt(dateStr.substring(4, 6), 10)
+      }
+      return isNaN(month) || month === 0 || month === selectedMonth
+    }
+
+    if (metric === '시간가동율') {
+      // 해당 설비의 일자별 가동율 상세
+      return data.detailData
+        .filter((row: Record<string, unknown>) => {
+          const rowProcess = String(row.공정 || row.공정명 || '')
+          const keys = Object.keys(row)
+          const equipKey = keys.find(k => k.includes('설비') || k.toLowerCase().includes('line'))
+          const rowEquip = equipKey ? String(row[equipKey] || '').trim() : ''
+          return rowProcess === process && rowEquip === equipment && filterByMonth(row)
+        })
+        .map((row: Record<string, unknown>) => {
+          const keys = Object.keys(row)
+          const rateKey = keys.find(k => k.includes('시간가동율') || k.includes('가동율'))
+          return {
+            일자: String(row.생산일자 || row.작업일자 || row.일자 || ''),
+            설비: equipment,
+            가동율: rateKey ? `${parseNumber(row[rateKey] as string | number).toFixed(1)}%` : '-',
+            작업시간: row['작업시간(분)'] || row['가동시간(분)'] || '-',
+            비가동시간: row['비가동시간(분)'] || '-'
+          }
+        })
+        .slice(0, 50)
+    }
+
+    if (metric === 'CT 초과') {
+      // 해당 품목의 CT 상세
+      return data.ctData
+        .filter((row: Record<string, unknown>) => {
+          const rowProcess = String(row.공정 || row.공정명 || '')
+          const keys = Object.keys(row)
+          const productKey = keys.find(k => k.includes('품목') || k.includes('품명'))
+          const rowProduct = productKey ? String(row[productKey] || '').trim() : ''
+          return rowProcess === process && rowProduct === product && filterByMonth(row)
+        })
+        .map((row: Record<string, unknown>) => {
+          const keys = Object.keys(row)
+          const actualKey = keys.find(k => (k.includes('실적') || k.includes('실제')) && k.toLowerCase().includes('ct'))
+          const targetKey = keys.find(k => (k.includes('목표') || k.includes('표준')) && k.toLowerCase().includes('ct'))
+          return {
+            일자: String(row.생산일자 || row.작업일자 || row.일자 || ''),
+            품목: product,
+            실적CT: actualKey ? parseNumber(row[actualKey] as string | number).toFixed(1) : '-',
+            목표CT: targetKey ? parseNumber(row[targetKey] as string | number).toFixed(1) : '-',
+            초과율: actualKey && targetKey ?
+              `${(((parseNumber(row[actualKey] as string | number) - parseNumber(row[targetKey] as string | number)) / parseNumber(row[targetKey] as string | number)) * 100).toFixed(1)}%` : '-'
+          }
+        })
+        .slice(0, 50)
+    }
+
+    if (metric === '불량률') {
+      // 해당 설비의 불량 상세
+      return data.detailData
+        .filter((row: Record<string, unknown>) => {
+          const rowProcess = String(row.공정 || row.공정명 || '')
+          const keys = Object.keys(row)
+          const equipKey = keys.find(k => k.includes('설비') || k.toLowerCase().includes('line'))
+          const rowEquip = equipKey ? String(row[equipKey] || '').trim() : ''
+          return rowProcess === process && rowEquip === equipment && filterByMonth(row)
+        })
+        .map((row: Record<string, unknown>) => {
+          const keys = Object.keys(row)
+          const goodKey = keys.find(k => k.includes('양품') && k.includes('수량'))
+          const defectKey = keys.find(k => k.includes('불량') && k.includes('수량'))
+          const good = goodKey ? parseNumber(row[goodKey] as string | number) : 0
+          const defect = defectKey ? parseNumber(row[defectKey] as string | number) : 0
+          const total = good + defect
+          return {
+            일자: String(row.생산일자 || row.작업일자 || row.일자 || ''),
+            설비: equipment,
+            품목: String(row.품목명 || row.품목 || '-'),
+            양품수량: good.toLocaleString(),
+            불량수량: defect.toLocaleString(),
+            불량률: total > 0 ? `${((defect / total) * 100).toFixed(1)}%` : '-'
+          }
+        })
+        .filter((row: Record<string, string>) => parseNumber(row.불량수량) > 0)
+        .slice(0, 50)
+    }
+
+    if (metric === '자재불량') {
+      // 해당 품목의 자재불량 상세
+      return data.materialDefectData
+        .filter((row: Record<string, unknown>) => {
+          const keys = Object.keys(row)
+          const productKey = keys.find(k => k.includes('품목') || k.includes('품명') || k.includes('부품'))
+          const rowProduct = productKey ? String(row[productKey] || '').trim() : ''
+          return rowProduct === product && filterByMonth(row)
+        })
+        .map((row: Record<string, unknown>) => {
+          const keys = Object.keys(row)
+          const defectTypeKeys = keys.filter(k => k.startsWith('('))
+          const defectDetails = defectTypeKeys
+            .map(k => ({ type: k, count: parseNumber(row[k] as string | number) }))
+            .filter(d => d.count > 0)
+            .sort((a, b) => b.count - a.count)
+
+          return {
+            일자: String(row.생산일자 || row.작업일자 || row.일자 || ''),
+            품목: product,
+            불량합계: parseNumber(row['불량합계'] as string | number).toLocaleString(),
+            주요불량유형: defectDetails[0]?.type || '-',
+            불량상세: defectDetails.map(d => `${d.type}:${d.count}`).join(', ') || '-'
+          }
+        })
+        .slice(0, 50)
+    }
+
+    if (metric === '검포장불량') {
+      // 해당 설비의 검포장 불량 상세
+      return data.packagingStatusData
+        .filter((row: Record<string, unknown>) => {
+          const keys = Object.keys(row)
+          const equipKey = keys.find(k => k.includes('설비') || k.toLowerCase().includes('line') || k.includes('라인'))
+          const rowEquip = equipKey ? String(row[equipKey] || '').trim() : ''
+          return rowEquip === equipment
+        })
+        .map((row: Record<string, unknown>) => {
+          const keys = Object.keys(row)
+          const productKey = keys.find(k => k.includes('품목') || k.includes('품명'))
+          const defectKey = keys.find(k => k.includes('불량수량') || k.includes('불량'))
+          const repairKey = keys.find(k => k.includes('수리수량') || k.includes('수리'))
+          const scrapKey = keys.find(k => k.includes('폐기수량') || k.includes('폐기'))
+          return {
+            설비: equipment,
+            품목: productKey ? String(row[productKey] || '-') : '-',
+            불량수량: defectKey ? parseNumber(row[defectKey] as string | number).toLocaleString() : '0',
+            수리수량: repairKey ? parseNumber(row[repairKey] as string | number).toLocaleString() : '0',
+            폐기수량: scrapKey ? parseNumber(row[scrapKey] as string | number).toLocaleString() : '0'
+          }
+        })
+        .slice(0, 50)
+    }
+
+    return []
+  }, [selectedIssue, data, selectedMonth])
+
   // 심각도별 아이콘
   const getSeverityIcon = (severity: Severity) => {
     switch (severity) {
@@ -652,7 +820,8 @@ export default function KeyIssuesBoard() {
                   {filterByProcess(operationRateIssues).map(issue => (
                     <div
                       key={issue.id}
-                      className={`p-3 rounded-lg border ${getSeverityStyle(issue.severity)}`}
+                      onClick={() => openDetailModal(issue)}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -691,7 +860,8 @@ export default function KeyIssuesBoard() {
                   {filterByProcess(ctExcessIssues).map(issue => (
                     <div
                       key={issue.id}
-                      className={`p-3 rounded-lg border ${getSeverityStyle(issue.severity)}`}
+                      onClick={() => openDetailModal(issue)}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -746,7 +916,8 @@ export default function KeyIssuesBoard() {
                   {filterByProcess(defectRateIssues).map(issue => (
                     <div
                       key={issue.id}
-                      className={`p-3 rounded-lg border ${getSeverityStyle(issue.severity)}`}
+                      onClick={() => openDetailModal(issue)}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -785,7 +956,8 @@ export default function KeyIssuesBoard() {
                   {filterByProcess(materialDefectIssues).map(issue => (
                     <div
                       key={issue.id}
-                      className={`p-3 rounded-lg border ${getSeverityStyle(issue.severity)}`}
+                      onClick={() => openDetailModal(issue)}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -824,7 +996,8 @@ export default function KeyIssuesBoard() {
                   {filterByProcess(packagingDefectIssues).map(issue => (
                     <div
                       key={issue.id}
-                      className={`p-3 rounded-lg border ${getSeverityStyle(issue.severity)}`}
+                      onClick={() => openDetailModal(issue)}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -1052,6 +1225,116 @@ export default function KeyIssuesBoard() {
                   적용
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 상세내역 팝업 모달 */}
+      {detailModalOpen && selectedIssue && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-[800px] max-h-[80vh] overflow-hidden">
+            <div className={`px-6 py-4 flex items-center justify-between ${
+              selectedIssue.metric === '시간가동율' || selectedIssue.metric === 'CT 초과'
+                ? 'bg-slate-800'
+                : 'bg-red-600'
+            } text-white`}>
+              <div>
+                <h2 className="font-semibold flex items-center gap-2">
+                  {getSeverityIcon(selectedIssue.severity)} {selectedIssue.metric} 상세
+                </h2>
+                <p className="text-sm opacity-80 mt-1">
+                  {selectedIssue.process} · {selectedIssue.equipment || selectedIssue.product}
+                </p>
+              </div>
+              <button
+                onClick={() => setDetailModalOpen(false)}
+                className="text-white/70 hover:text-white text-xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* 요약 정보 */}
+              <div className="bg-slate-50 rounded-lg p-4 mb-4">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-slate-800">
+                      {selectedIssue.metric === '시간가동율' ? `${selectedIssue.currentValue.toFixed(1)}%` :
+                       selectedIssue.metric === 'CT 초과' ? `+${selectedIssue.currentValue.toFixed(1)}%` :
+                       selectedIssue.metric === '불량률' ? `${selectedIssue.currentValue.toFixed(1)}%` :
+                       selectedIssue.currentValue.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-slate-500 mt-1">현재값</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-slate-800">
+                      {selectedIssue.threshold > 0 ? `${selectedIssue.threshold}%` : '-'}
+                    </div>
+                    <div className="text-sm text-slate-500 mt-1">기준값</div>
+                  </div>
+                  <div>
+                    <div className={`text-2xl font-bold ${
+                      selectedIssue.severity === 'critical' ? 'text-red-600' :
+                      selectedIssue.severity === 'warning' ? 'text-orange-600' : 'text-yellow-600'
+                    }`}>
+                      {selectedIssue.metric === '시간가동율' ? `-${selectedIssue.diff.toFixed(1)}%p` :
+                       selectedIssue.metric === 'CT 초과' || selectedIssue.metric === '불량률' ? `+${selectedIssue.diff.toFixed(1)}%` :
+                       `${selectedIssue.diff.toLocaleString()}개`}
+                    </div>
+                    <div className="text-sm text-slate-500 mt-1">차이</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 상세 데이터 테이블 */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="max-h-[400px] overflow-auto">
+                  {issueDetailData.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400">
+                      상세 데이터가 없습니다.
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-100 sticky top-0">
+                        <tr>
+                          {Object.keys(issueDetailData[0] || {}).map(key => (
+                            <th key={key} className="px-4 py-2 text-left font-medium text-slate-600">
+                              {key}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {issueDetailData.map((row, idx) => (
+                          <tr key={idx} className="border-t hover:bg-slate-50">
+                            {Object.values(row).map((val, vidx) => (
+                              <td key={vidx} className="px-4 py-2 text-slate-700">
+                                {String(val || '-')}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* 데이터 건수 */}
+              <div className="mt-3 text-right text-sm text-slate-500">
+                총 {issueDetailData.length}건
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 flex justify-end">
+              <button
+                onClick={() => setDetailModalOpen(false)}
+                className="px-4 py-2 text-sm bg-slate-800 text-white rounded-lg hover:bg-slate-700"
+              >
+                닫기
+              </button>
             </div>
           </div>
         </div>
