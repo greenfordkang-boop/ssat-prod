@@ -182,51 +182,64 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       }))
   }, [processData])
 
-  // 설비/Line별 현황 - 업종별데이터(detailData)의 설비(라인명) 기준
+  // 설비/Line별 현황 - 하이브리드: 설비명은 업종별데이터, 생산/불량은 생산실적
   const equipmentStats = useMemo(() => {
     const equip: Record<string, { production: number; defect: number; time: number }> = {}
 
-    // 업종별데이터에서 현재 공정 필터링
-    const processDetailData = data.detailData.filter(row => {
+    // 1. 업종별데이터에서 (품목 → 설비명) 매핑 테이블 생성
+    const productToEquipMap = new Map<string, string>()
+    data.detailData.forEach(row => {
       const rowProcess = String(row.공정 || row.공정명 || row.process || '')
-      return rowProcess === processName
-    })
+      if (rowProcess !== processName) return
 
-    // 월 필터 적용
-    const filteredDetailData = processDetailData.filter(row => {
-      const dateStr = String(row.생산일자 || row.일자 || row.date || '')
-      if (!dateStr) return true
-      const match = dateStr.match(/\d{4}-(\d{2})-\d{2}/)
-      if (match) {
-        return parseInt(match[1]) === selectedMonth
-      }
-      return true
-    })
+      // 품목 키 생성 (품목코드 또는 품목명)
+      const productKey = String(row.품목코드 || row.품목명 || row['품목'] || '').trim()
+      if (!productKey) return
 
-    // 디버깅
-    if (filteredDetailData.length > 0) {
-      const firstRow = filteredDetailData[0]
-      const keys = Object.keys(firstRow)
-      const equipKeys = keys.filter(k => k.includes('설비') || k.includes('라인'))
-      console.log(`🏭 [${processName}] 업종별데이터 설비필드:`, equipKeys.join(', '))
-    }
-
-    filteredDetailData.forEach(row => {
-      // 설비(라인명) 필드 우선 사용
-      const name = String(
+      // 설비명 추출
+      const equipName = String(
         row['설비(라인명)'] || row['설비(라인)명'] || row['설비/LINE'] || row['설비/Line'] ||
-        row['설비명'] || row.LINE || row.Line || '기타'
-      ).trim() || '기타'
+        row['설비명'] || row.LINE || row.Line || ''
+      ).trim()
+
+      if (equipName && equipName !== processName) {
+        productToEquipMap.set(productKey, equipName)
+      }
+    })
+
+    console.log(`🏭 [${processName}] 품목→설비 매핑:`, productToEquipMap.size, '건')
+
+    // 2. 생산실적(processData)에서 매핑 기반으로 설비별 집계
+    processData.forEach(row => {
+      // 품목 키로 설비명 조회
+      const productCode = String(row.품목코드 || '').trim()
+      const productName = String(row.품목명 || '').trim()
+
+      // 품목코드 또는 품목명으로 설비명 매핑 조회
+      let equipName = productToEquipMap.get(productCode) || productToEquipMap.get(productName)
+
+      // 매핑 없으면 생산실적의 설비/LINE 필드 사용 (fallback)
+      if (!equipName) {
+        equipName = String(
+          row['설비/LINE'] || row['설비/Line'] || row['설비명'] ||
+          row.LINE || row.Line || '기타'
+        ).trim()
+      }
+
+      // 공정명과 동일하면 '기타'로 처리
+      if (!equipName || equipName === processName) {
+        equipName = '기타'
+      }
 
       const prod = parseNumber(row.생산수량)
       const goodQty = parseNumber(row.양품수량)
       const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
-      const time = parseNumber(row['가동시간(분)'] || row['작업시간(분)'] || row.가동시간 || 0)
+      const time = parseNumber(row['작업시간(분)'] || row['가동시간(분)'] || 0)
 
-      if (!equip[name]) equip[name] = { production: 0, defect: 0, time: 0 }
-      equip[name].production += prod
-      equip[name].defect += defectQty > 0 ? defectQty : 0
-      equip[name].time += time
+      if (!equip[equipName]) equip[equipName] = { production: 0, defect: 0, time: 0 }
+      equip[equipName].production += prod
+      equip[equipName].defect += defectQty > 0 ? defectQty : 0
+      equip[equipName].time += time
     })
 
     let result = Object.entries(equip)
@@ -256,7 +269,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result
-  }, [data.detailData, processName, selectedMonth, equipFilter, equipSort])
+  }, [data.detailData, processData, processName, equipFilter, equipSort])
 
   // 선택된 설비의 불량 상세 데이터
   const defectDetails = useMemo(() => {
