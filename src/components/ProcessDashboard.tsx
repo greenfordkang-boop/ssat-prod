@@ -217,13 +217,13 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         equipName = '기타'
       }
 
-      // 양품수량, 불량수량 - 다양한 필드명 지원
-      const goodQty = parseNumber(
-        row.양품수량 || row['양품 수량'] || row.良品数量 || row.good_qty || 0 as string | number
-      )
-      const defectQty = parseNumber(
-        row.불량수량 || row['불량 수량'] || row.不良数量 || row.defect_qty || 0 as string | number
-      )
+      // 양품수량, 불량수량 - 키 이름에서 동적으로 찾기
+      const keys = Object.keys(row)
+      const goodKey = keys.find(k => k.includes('양품') && k.includes('수량'))
+      const defectKey = keys.find(k => k.includes('불량') && k.includes('수량'))
+
+      const goodQty = goodKey ? parseNumber(row[goodKey] as string | number) : 0
+      const defectQty = defectKey ? parseNumber(row[defectKey] as string | number) : 0
       const time = parseNumber(row['작업시간(분)'] || row['가동시간(분)'] || 0)
 
       if (!equip[equipName]) equip[equipName] = { good: 0, defect: 0, time: 0 }
@@ -285,12 +285,20 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         ).trim()
         if (!equipName || equipName === processName) equipName = '기타'
 
-        const defectQty = parseNumber(row.불량수량 as string | number)
+        // 불량수량 키 동적 찾기
+        const keys = Object.keys(row)
+        const defectKey = keys.find(k => k.includes('불량') && k.includes('수량'))
+        const defectQty = defectKey ? parseNumber(row[defectKey] as string | number) : 0
         return equipName === selectedEquipment && defectQty > 0
       })
       .map(row => {
-        const goodQty = parseNumber(row.양품수량 as string | number)
-        const defectQty = parseNumber(row.불량수량 as string | number)
+        // 양품/불량수량 키 동적 찾기
+        const keys = Object.keys(row)
+        const goodKey = keys.find(k => k.includes('양품') && k.includes('수량'))
+        const defectKey = keys.find(k => k.includes('불량') && k.includes('수량'))
+
+        const goodQty = goodKey ? parseNumber(row[goodKey] as string | number) : 0
+        const defectQty = defectKey ? parseNumber(row[defectKey] as string | number) : 0
         const totalProd = goodQty + defectQty
         return {
           생산일자: String(row.생산일자 || row.작업일자 || ''),
