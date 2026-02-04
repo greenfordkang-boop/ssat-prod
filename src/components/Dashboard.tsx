@@ -7,6 +7,7 @@ import Navigation from './Navigation'
 import OverviewDashboard from './OverviewDashboard'
 import FileUploadPage from './FileUploadPage'
 import ProcessDashboard from './ProcessDashboard'
+import KeyIssuesBoard from './KeyIssuesBoard'
 import DowntimeDashboard from './DowntimeDashboard'
 import WipDashboard from './WipDashboard'
 import QualityDashboard from './QualityDashboard'
@@ -73,7 +74,10 @@ export default function Dashboard() {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-6">
         {activeTab === 'overview' && <OverviewDashboard />}
-        {activeTab === 'process' && activeProcess && (
+        {activeTab === 'process' && activeProcess === 'key-issues' && (
+          <KeyIssuesBoard />
+        )}
+        {activeTab === 'process' && activeProcess && activeProcess !== 'key-issues' && (
           <ProcessDashboard process={activeProcess} subMenu={activeSubMenu} />
         )}
         {activeTab === 'downtime' && <DowntimeDashboard />}

@@ -26,7 +26,8 @@ const processTabs = [
   { id: 'injection', name: '사출' },
   { id: 'painting', name: '도장' },
   { id: 'printing', name: '인쇄' },
-  { id: 'assembly', name: '조립' }
+  { id: 'assembly', name: '조립' },
+  { id: 'key-issues', name: '중점관리항목', isHighlight: true }
 ]
 
 const commonSubMenus = [
@@ -157,10 +158,15 @@ export default function Navigation({
                   onClick={() => onProcessChange(process.id)}
                   className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
                     activeProcess === process.id
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                      ? process.isHighlight
+                        ? 'bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200'
+                        : 'bg-white text-gray-900 shadow-sm'
+                      : process.isHighlight
+                        ? 'text-red-500 hover:text-red-600 hover:bg-red-50/50 font-semibold'
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
                   }`}
                 >
+                  {process.isHighlight && <span className="mr-1">🚨</span>}
                   {process.name}
                 </button>
               ))}
@@ -169,8 +175,8 @@ export default function Navigation({
         </div>
       )}
 
-      {/* Sub Menu (3rd level) */}
-      {activeTab === 'process' && activeProcess && (
+      {/* Sub Menu (3rd level) - 중점관리항목은 서브메뉴 없음 */}
+      {activeTab === 'process' && activeProcess && activeProcess !== 'key-issues' && (
         <div className="bg-white border-b border-gray-100">
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex items-center h-10 gap-0.5">
