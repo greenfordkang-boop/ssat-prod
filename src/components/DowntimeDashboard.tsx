@@ -198,7 +198,7 @@ export default function DowntimeDashboard() {
 
   // 설비별 비가동 분석 (설비/LINE 기준, 비가동유형은 2행 컬럼명 기준)
   const downtimeByEquipment = useMemo(() => {
-    const equipMap = new Map<string, { total: number; downtime: number; types: Record<string, number> }>()
+    const equipMap = new Map<string, { total: number; downtime: number }>()
 
     // 제외할 메타 컬럼 키워드 (비가동 사유가 아닌 컬럼)
     const excludeKeywords = [
@@ -228,32 +228,24 @@ export default function DowntimeDashboard() {
         item['가동시간(분)'] || item.가동시간 || item.operating_minutes || 0
       )) || 0
 
+      // 비가동합계가 있으면 사용, 없으면 각 비가동 사유 컬럼 합산
+      let downtimeTotal = parseFloat(String(item.비가동합계 || 0)) || 0
+
+      if (downtimeTotal === 0) {
+        // 각 비가동 사유 컬럼 합산
+        const keys = Object.keys(item)
+        keys.forEach(key => {
+          const lowerKey = key.toLowerCase()
+          const isExcluded = excludeKeywords.some(ex => lowerKey.includes(ex.toLowerCase()))
+          if (isExcluded) return
+          downtimeTotal += parseFloat(String(item[key as keyof typeof item] || 0)) || 0
+        })
+      }
+
       if (!equipMap.has(equip)) {
-        equipMap.set(equip, { total: 0, downtime: 0, types: {} })
+        equipMap.set(equip, { total: 0, downtime: 0 })
       }
       const current = equipMap.get(equip)!
-
-      // 비가동유형별 시간 집계
-      let downtimeTotal = 0
-      const keys = Object.keys(item)
-      keys.forEach(key => {
-        const lowerKey = key.toLowerCase()
-        const isExcluded = excludeKeywords.some(ex => lowerKey.includes(ex.toLowerCase()))
-        if (isExcluded) return
-        const value = parseFloat(String(item[key as keyof typeof item] || 0)) || 0
-        if (value > 0) {
-          const cleanKey = key.replace(/_\d+$/, '')
-          current.types[cleanKey] = (current.types[cleanKey] || 0) + value
-          downtimeTotal += value
-        }
-      })
-
-      // 비가동합계가 있으면 그 값 사용 (유형별 합산보다 정확할 수 있음)
-      const explicitTotal = parseFloat(String(item.비가동합계 || 0)) || 0
-      if (explicitTotal > 0) {
-        downtimeTotal = explicitTotal
-      }
-
       current.total += operatingTime + downtimeTotal
       current.downtime += downtimeTotal
     })
@@ -264,112 +256,16 @@ export default function DowntimeDashboard() {
         const lowerName = name.toLowerCase()
         return !lowerName.includes('total') && !name.includes('합계') && !name.includes('총계') && !name.includes('전체')
       })
-      .map(([name, data]) => {
-        // TOP3 비가동유형 추출
-        const topTypes = Object.entries(data.types)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 3)
-          .map(([type, value]) => ({ type, value: Math.round(value) }))
-
-        return {
-          name: name.length > 12 ? name.slice(0, 12) + '...' : name,
-          fullName: name,
-          가동시간: Math.round(data.total - data.downtime),
-          비가동시간: Math.round(data.downtime),
-          비가동율: data.total > 0 ? Math.round((data.downtime / data.total) * 1000) / 10 : 0,
-          topTypes
-        }
-      })
+      .map(([name, data]) => ({
+        name: name.length > 12 ? name.slice(0, 12) + '...' : name,
+        fullName: name,
+        가동시간: Math.round(data.total - data.downtime),
+        비가동시간: Math.round(data.downtime),
+        비가동율: data.total > 0 ? Math.round((data.downtime / data.total) * 1000) / 10 : 0
+      }))
       .sort((a, b) => b.비가동시간 - a.비가동시간) // 비가동시간 큰 순으로 정렬
       .slice(0, 15)
   }, [filteredData])
-
-  // 비가동유형 컬럼 추출 (M~AI열의 헤더들)
-  const downtimeTypeColumns = useMemo(() => {
-    if (filteredData.length === 0) return []
-
-    // 제외할 메타 컬럼 (비가동유형이 아닌 컬럼)
-    const excludeKeywords = [
-      '생산일자', '일자', 'date',
-      '공정', 'process',
-      '설비', 'LINE', 'line', '라인',
-      '주/야간', '주야간', '근무',
-      '무인',
-      '조업시간', '조업',
-      '가동시간', '가동율', '가동률',
-      '비가동합계', '합계',
-      '시간가동율', '시간가동률',
-      '계획정지합계',
-      '설비가동율', '설비가동률',
-      'id', 'data', 'col_'
-    ]
-
-    const allKeys = Object.keys(filteredData[0])
-    return allKeys.filter(key => {
-      const lowerKey = key.toLowerCase()
-      return !excludeKeywords.some(ex => lowerKey.includes(ex.toLowerCase()))
-    })
-  }, [filteredData])
-
-  // 설비별 비가동유형 상세 데이터
-  const downtimeDetailByEquipment = useMemo(() => {
-    if (filteredData.length === 0 || downtimeTypeColumns.length === 0) return []
-
-    const equipMap = new Map<string, {
-      equip: string
-      공정: string
-      생산일자: string
-      types: Record<string, number>
-      total: number
-    }>()
-
-    filteredData.forEach(item => {
-      const equip = String(
-        item['설비/LINE'] || item['설비(라인)명'] || item.LINE || item['LINE'] ||
-        item.equipment_name || item.설비명 || item.설비 || item.라인명 || '기타'
-      )
-      const 공정 = String(item.공정 || item.process || '')
-      const 생산일자 = String(item.생산일자 || item.일자 || item.date || '')
-
-      const key = `${생산일자}_${공정}_${equip}`
-
-      if (!equipMap.has(key)) {
-        equipMap.set(key, {
-          equip,
-          공정,
-          생산일자,
-          types: {},
-          total: 0
-        })
-      }
-
-      const current = equipMap.get(key)!
-
-      // 각 비가동유형별 시간 집계
-      downtimeTypeColumns.forEach(col => {
-        const value = parseFloat(String(item[col as keyof typeof item] || 0)) || 0
-        if (value > 0) {
-          const cleanCol = col.replace(/_\d+$/, '') // 중복 헤더 처리
-          current.types[cleanCol] = (current.types[cleanCol] || 0) + value
-          current.total += value
-        }
-      })
-    })
-
-    return Array.from(equipMap.values())
-      .filter(item => item.total > 0) // 비가동시간이 있는 것만
-      .sort((a, b) => b.total - a.total) // 비가동시간 큰 순
-      .slice(0, 50)
-  }, [filteredData, downtimeTypeColumns])
-
-  // 비가동유형 목록 (실제 데이터에 있는 것만)
-  const activeDowntimeTypes = useMemo(() => {
-    const typeSet = new Set<string>()
-    downtimeDetailByEquipment.forEach(item => {
-      Object.keys(item.types).forEach(t => typeSet.add(t))
-    })
-    return Array.from(typeSet).sort()
-  }, [downtimeDetailByEquipment])
 
   // 총 비가동시간 계산
   const totalDowntime = useMemo(() => {
@@ -544,10 +440,10 @@ export default function DowntimeDashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis
                 dataKey="name"
-                tick={{ fontSize: downtimeByEquipment.length > 8 ? 9 : 10 }}
-                angle={downtimeByEquipment.length > 6 ? -45 : 0}
-                textAnchor={downtimeByEquipment.length > 6 ? 'end' : 'middle'}
-                height={downtimeByEquipment.length > 6 ? 80 : 60}
+                tick={{ fontSize: 9 }}
+                angle={-90}
+                textAnchor="end"
+                height={100}
                 interval={0}
               />
               <YAxis
@@ -563,40 +459,13 @@ export default function DowntimeDashboard() {
                 label={{ value: '비가동율(%)', angle: 90, position: 'insideRight', style: { textAnchor: 'middle', fontSize: 11 } }}
               />
               <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null
+                formatter={(value, name) => {
+                  if (name === '비가동율') return [`${(value as number).toFixed(1)}%`, name]
+                  return [formatNumber(value as number) + '분', name]
+                }}
+                labelFormatter={(label) => {
                   const item = downtimeByEquipment.find(d => d.name === label)
-                  if (!item) return null
-                  return (
-                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-sm">
-                      <div className="font-bold text-slate-800 mb-2 border-b pb-1">{item.fullName}</div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between gap-4">
-                          <span className="text-green-600">가동시간:</span>
-                          <span className="font-medium">{formatNumber(item.가동시간)}분</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span className="text-red-600">비가동시간:</span>
-                          <span className="font-medium">{formatNumber(item.비가동시간)}분</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span className="text-amber-600">비가동율:</span>
-                          <span className="font-medium">{item.비가동율}%</span>
-                        </div>
-                      </div>
-                      {item.topTypes.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-slate-100">
-                          <div className="text-xs text-slate-500 mb-1">📌 주요 비가동유형</div>
-                          {item.topTypes.map((t, i) => (
-                            <div key={t.type} className="flex justify-between gap-3 text-xs">
-                              <span className="text-slate-600">{i + 1}. {t.type}</span>
-                              <span className="font-medium text-amber-700">{formatNumber(t.value)}분</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
+                  return item?.fullName || label
                 }}
               />
               <Legend verticalAlign="top" height={36} />
@@ -646,40 +515,28 @@ export default function DowntimeDashboard() {
         )}
       </div>
 
-      {/* 비가동유형별 상세 테이블 */}
+      {/* 상세 테이블 */}
       <div className="bg-white rounded-xl p-6 border border-slate-200">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-slate-700 flex items-center gap-2">
             <span className="w-1 h-5 bg-slate-500 rounded-full" />
-            비가동 상세 현황 (설비별 비가동유형)
-            <span className="text-sm font-normal text-slate-400">({downtimeDetailByEquipment.length}건)</span>
+            비가동 상세 현황
+            <span className="text-sm font-normal text-slate-400">({downtimeByReason.length}건)</span>
           </h3>
           <div className="flex items-center gap-3">
             <input
               type="text"
-              placeholder="설비/사유 검색..."
+              placeholder="사유 검색..."
               value={reasonFilter}
               onChange={(e) => setReasonFilter(e.target.value)}
               className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg w-40"
             />
             <button
-              onClick={() => {
-                const exportData = downtimeDetailByEquipment
-                  .filter(item => !reasonFilter || item.equip.toLowerCase().includes(reasonFilter.toLowerCase()))
-                  .map(item => {
-                    const row: Record<string, unknown> = {
-                      생산일자: item.생산일자,
-                      공정: item.공정,
-                      '설비/LINE': item.equip,
-                      비가동합계: Math.round(item.total)
-                    }
-                    activeDowntimeTypes.forEach(type => {
-                      row[type] = Math.round(item.types[type] || 0)
-                    })
-                    return row
-                  })
-                downloadExcel(exportData, `비가동상세_${selectedMonth}월`)
-              }}
+              onClick={() => downloadExcel(downtimeByReason.map((item, idx) => ({
+                비가동사유: item.name,
+                '시간(분)': item.value,
+                '비율(%)': totalDowntime > 0 ? ((item.value / totalDowntime) * 100).toFixed(1) : '0'
+              })), `비가동현황_${selectedMonth}월`)}
               className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
             >
               📥 엑셀
@@ -692,129 +549,43 @@ export default function DowntimeDashboard() {
             </button>
           </div>
         </div>
-        {showTable && activeDowntimeTypes.length > 0 && (
-          <div className="overflow-auto max-h-[500px]">
-            <table className="w-full text-sm border-collapse">
-              <thead className="bg-slate-100 sticky top-0 z-10">
+        {showTable && (
+          <div className="overflow-auto max-h-96">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 sticky top-0">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap sticky left-0 bg-slate-100">생산일자</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap">공정</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap">설비/LINE</th>
-                  <th className="px-3 py-2 text-right font-semibold text-red-600 border-b border-slate-200 whitespace-nowrap bg-red-50">비가동합계</th>
-                  {activeDowntimeTypes.map(type => (
-                    <th
-                      key={type}
-                      className="px-3 py-2 text-right font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap bg-amber-50 cursor-help"
-                      title={type}
-                    >
-                      {type.length > 8 ? type.slice(0, 8) + '..' : type}
-                    </th>
-                  ))}
+                  <SortableHeader label="비가동 사유" sortKey="name" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="시간(분)" sortKey="value" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <th className="text-center px-4 py-3 font-semibold text-slate-600">비율</th>
+                  <th className="text-center px-4 py-3 font-semibold text-slate-600">그래프</th>
                 </tr>
               </thead>
               <tbody>
-                {downtimeDetailByEquipment
-                  .filter(item => !reasonFilter ||
-                    item.equip.toLowerCase().includes(reasonFilter.toLowerCase()) ||
-                    Object.keys(item.types).some(t => t.toLowerCase().includes(reasonFilter.toLowerCase()))
-                  )
-                  .map((item, idx) => (
-                    <tr key={`${item.생산일자}_${item.공정}_${item.equip}_${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap sticky left-0 bg-inherit">{item.생산일자}</td>
-                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{item.공정}</td>
-                      <td className="px-3 py-2 font-medium text-slate-700 whitespace-nowrap">{item.equip}</td>
-                      <td className="px-3 py-2 text-right font-bold text-red-600 tabular-nums bg-red-50/50">{formatNumber(Math.round(item.total))}</td>
-                      {activeDowntimeTypes.map(type => {
-                        const value = item.types[type] || 0
-                        return (
-                          <td key={type} className={`px-3 py-2 text-right tabular-nums ${value > 0 ? 'text-amber-700 font-medium' : 'text-slate-300'}`}>
-                            {value > 0 ? formatNumber(Math.round(value)) : '-'}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-              </tbody>
-              <tfoot className="bg-slate-200 sticky bottom-0">
-                <tr className="font-bold">
-                  <td className="px-3 py-2 text-slate-700 sticky left-0 bg-slate-200" colSpan={3}>합계</td>
-                  <td className="px-3 py-2 text-right text-red-700 tabular-nums bg-red-100">
-                    {formatNumber(Math.round(downtimeDetailByEquipment.reduce((sum, item) => sum + item.total, 0)))}
-                  </td>
-                  {activeDowntimeTypes.map(type => {
-                    const typeTotal = downtimeDetailByEquipment.reduce((sum, item) => sum + (item.types[type] || 0), 0)
-                    return (
-                      <td key={type} className="px-3 py-2 text-right tabular-nums text-amber-800 bg-amber-100">
-                        {typeTotal > 0 ? formatNumber(Math.round(typeTotal)) : '-'}
+                {downtimeByReason.map((item, idx) => {
+                  const percent = totalDowntime > 0 ? (item.value / totalDowntime) * 100 : 0
+                  return (
+                    <tr key={item.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="px-4 py-3 font-medium text-slate-700 text-left">{item.name}</td>
+                      <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatNumber(item.value)}</td>
+                      <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{percent.toFixed(1)}%</td>
+                      <td className="px-4 py-3">
+                        <div className="w-full bg-slate-200 rounded-full h-2.5">
+                          <div
+                            className="h-2.5 rounded-full"
+                            style={{
+                              width: `${percent}%`,
+                              backgroundColor: COLORS[idx % COLORS.length]
+                            }}
+                          />
+                        </div>
                       </td>
-                    )
-                  })}
-                </tr>
-              </tfoot>
+                    </tr>
+                  )
+                })}
+              </tbody>
             </table>
           </div>
         )}
-        {showTable && activeDowntimeTypes.length === 0 && (
-          <div className="py-12 text-center text-slate-400">
-            비가동유형 데이터가 없습니다. 가동율 파일의 M~AI열에 비가동유형이 있는지 확인해주세요.
-          </div>
-        )}
-      </div>
-
-      {/* 비가동 사유별 요약 */}
-      <div className="bg-white rounded-xl p-6 border border-slate-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-slate-700 flex items-center gap-2">
-            <span className="w-1 h-5 bg-blue-500 rounded-full" />
-            비가동 사유별 요약
-            <span className="text-sm font-normal text-slate-400">({downtimeByReason.length}건)</span>
-          </h3>
-          <button
-            onClick={() => downloadExcel(downtimeByReason.map(item => ({
-              비가동사유: item.name,
-              '시간(분)': item.value,
-              '비율(%)': totalDowntime > 0 ? ((item.value / totalDowntime) * 100).toFixed(1) : '0'
-            })), `비가동사유요약_${selectedMonth}월`)}
-            className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
-          >
-            📥 엑셀
-          </button>
-        </div>
-        <div className="overflow-auto max-h-80">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 sticky top-0">
-              <tr>
-                <SortableHeader label="비가동 사유" sortKey="name" sortConfig={sortConfig} onSort={handleSort} align="left" />
-                <SortableHeader label="시간(분)" sortKey="value" sortConfig={sortConfig} onSort={handleSort} align="right" />
-                <th className="text-right px-4 py-3 font-semibold text-slate-600">비율</th>
-                <th className="text-center px-4 py-3 font-semibold text-slate-600">그래프</th>
-              </tr>
-            </thead>
-            <tbody>
-              {downtimeByReason.map((item, idx) => {
-                const percent = totalDowntime > 0 ? (item.value / totalDowntime) * 100 : 0
-                return (
-                  <tr key={item.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                    <td className="px-4 py-3 font-medium text-slate-700 text-left">{item.name}</td>
-                    <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatNumber(item.value)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{percent.toFixed(1)}%</td>
-                    <td className="px-4 py-3">
-                      <div className="w-full bg-slate-200 rounded-full h-2.5">
-                        <div
-                          className="h-2.5 rounded-full"
-                          style={{
-                            width: `${percent}%`,
-                            backgroundColor: COLORS[idx % COLORS.length]
-                          }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   )

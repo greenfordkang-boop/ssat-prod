@@ -270,7 +270,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
           production: totalProduction,
           defect: values.defect,
           defectRate: totalProduction > 0 ? (values.defect / totalProduction * 100) : 0,
-          uph: values.time > 0 ? Math.round(totalProduction / (values.time / 60)) : 0
+          uph: values.time > 0 ? (totalProduction / (values.time / 60)) : 0
         }
       })
 
@@ -1043,7 +1043,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                             {row.defectRate.toFixed(1)}%
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">{formatNumber(row.uph)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{row.uph.toFixed(1)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1105,8 +1105,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                     <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                       <td className="px-4 py-3">{row.equipment}</td>
                       <td className="px-4 py-3 max-w-xs truncate">{row.product}</td>
-                      <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(row.uph)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(row.upph)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium">{row.uph.toFixed(1)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium">{row.upph.toFixed(1)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{row.standardCT.toFixed(1)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{row.actualCT.toFixed(1)}</td>
                       <td className="px-4 py-3 text-right">
