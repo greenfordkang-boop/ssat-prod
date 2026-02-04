@@ -188,13 +188,24 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
     // 1. 업종별데이터에서 (품목 → 설비명) 매핑 테이블 생성
     const productToEquipMap = new Map<string, string>()
-    data.detailData.forEach(row => {
-      const rowProcess = String(row.공정 || row.공정명 || row.process || '')
-      if (rowProcess !== processName) return
 
-      // 품목 키 생성 (품목코드 또는 품목명)
-      const productKey = String(row.품목코드 || row.품목명 || row['품목'] || '').trim()
-      if (!productKey) return
+    // 디버깅: 업종별데이터 필드 확인
+    const detailForProcess = data.detailData.filter(row => {
+      const rowProcess = String(row.공정 || row.공정명 || row.process || '')
+      return rowProcess === processName
+    })
+    if (detailForProcess.length > 0) {
+      const sample = detailForProcess[0]
+      console.log(`🔍 [${processName}] 업종별데이터 키:`, Object.keys(sample).join(', '))
+      console.log(`🔍 [${processName}] 업종별데이터 샘플:`, JSON.stringify(sample).slice(0, 500))
+    } else {
+      console.log(`⚠️ [${processName}] 업종별데이터 없음!`)
+    }
+
+    detailForProcess.forEach(row => {
+      // 품목 키 생성 - 다양한 필드명 지원
+      const productCode = String(row.품목코드 || row.부품코드 || row['품목 코드'] || '').trim()
+      const productName = String(row.품목명 || row.부품명 || row['품목'] || row['품명'] || '').trim()
 
       // 설비명 추출
       const equipName = String(
@@ -203,20 +214,35 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       ).trim()
 
       if (equipName && equipName !== processName) {
-        productToEquipMap.set(productKey, equipName)
+        if (productCode) productToEquipMap.set(productCode, equipName)
+        if (productName) productToEquipMap.set(productName, equipName)
       }
     })
 
     console.log(`🏭 [${processName}] 품목→설비 매핑:`, productToEquipMap.size, '건')
+    if (productToEquipMap.size > 0) {
+      const firstKey = Array.from(productToEquipMap.keys())[0]
+      console.log(`🏭 [${processName}] 매핑 샘플: "${firstKey}" → "${productToEquipMap.get(firstKey)}"`)
+    }
+
+    // 디버깅: 생산실적 필드 확인
+    if (processData.length > 0) {
+      const sample = processData[0]
+      console.log(`🔍 [${processName}] 생산실적 키:`, Object.keys(sample).join(', '))
+      console.log(`🔍 [${processName}] 생산실적 품목코드:`, sample.품목코드, '| 품목명:', sample.품목명)
+    }
 
     // 2. 생산실적(processData)에서 매핑 기반으로 설비별 집계
+    let matchCount = 0
+    let missCount = 0
     processData.forEach(row => {
-      // 품목 키로 설비명 조회
-      const productCode = String(row.품목코드 || '').trim()
-      const productName = String(row.품목명 || '').trim()
+      // 품목 키로 설비명 조회 - 다양한 필드명 지원
+      const productCode = String(row.품목코드 || row.부품코드 || row['품목 코드'] || '').trim()
+      const productName = String(row.품목명 || row.부품명 || row['품목'] || row['품명'] || '').trim()
 
       // 품목코드 또는 품목명으로 설비명 매핑 조회
       let equipName = productToEquipMap.get(productCode) || productToEquipMap.get(productName)
+      if (equipName) matchCount++; else missCount++;
 
       // 매핑 없으면 생산실적의 설비/LINE 필드 사용 (fallback)
       if (!equipName) {
@@ -241,6 +267,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       equip[equipName].defect += defectQty > 0 ? defectQty : 0
       equip[equipName].time += time
     })
+
+    console.log(`🏭 [${processName}] 매핑 결과: 성공=${matchCount}, 실패=${missCount}, 설비수=${Object.keys(equip).length}`)
 
     let result = Object.entries(equip)
       .map(([name, values]) => ({
