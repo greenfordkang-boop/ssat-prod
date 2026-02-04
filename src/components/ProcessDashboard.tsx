@@ -66,12 +66,29 @@ function SortableHeader({
 
 // 설비/Line 필드명 추출 헬퍼 함수
 const getEquipmentName = (row: Record<string, unknown>): string => {
-  // 다양한 필드명 지원 - 순서 중요 (정확한 매칭 우선)
-  const name = row['설비/LINE'] || row['설비/Line'] || row['설비/라인'] ||
+  // 1. 정확한 필드명 매칭 시도
+  const exactMatch = row['설비/LINE'] || row['설비/Line'] || row['설비/라인'] ||
                row['설비(라인)명'] || row['설비명'] || row.LINE || row.Line ||
                row['라인명'] || row['설비(라인)코드'] || row['설비코드'] ||
-               row['EQUIPMENT'] || row['Equipment'] || row.equipment || ''
-  return String(name).trim() || '기타'
+               row['EQUIPMENT'] || row['Equipment'] || row.equipment
+
+  if (exactMatch && String(exactMatch).trim()) {
+    return String(exactMatch).trim()
+  }
+
+  // 2. 키 이름에 '설비' 또는 'LINE'이 포함된 필드 검색 (대소문자 무시)
+  const keys = Object.keys(row)
+  for (const key of keys) {
+    const lowerKey = key.toLowerCase()
+    if ((lowerKey.includes('설비') || lowerKey.includes('line')) && !lowerKey.includes('가동')) {
+      const val = row[key]
+      if (val && String(val).trim() && String(val).trim() !== '조립' && String(val).trim() !== '사출' && String(val).trim() !== '도장') {
+        return String(val).trim()
+      }
+    }
+  }
+
+  return '기타'
 }
 
 export default function ProcessDashboard({ process, subMenu }: ProcessDashboardProps) {
@@ -176,7 +193,9 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       const equipKeys = keys.filter(k =>
         k.includes('설비') || k.includes('LINE') || k.includes('Line') || k.includes('라인')
       )
-      console.log('🏭 설비/Line 필드 확인:', equipKeys, '| 샘플값:', equipKeys.map(k => firstRow[k as keyof typeof firstRow]))
+      console.log(`🏭 [${processName}] 전체 키:`, keys.slice(0, 20))
+      console.log(`🏭 [${processName}] 설비 관련 필드:`, equipKeys, '| 샘플값:', equipKeys.map(k => firstRow[k as keyof typeof firstRow]))
+      console.log(`🏭 [${processName}] getEquipmentName 결과:`, getEquipmentName(firstRow as Record<string, unknown>))
     }
 
     processData.forEach(row => {
