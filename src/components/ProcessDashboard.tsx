@@ -194,6 +194,16 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
     console.log(`🏭 [${processName}] 업종별데이터 건수:`, detailForProcess.length)
 
+    // 디버깅: 첫 번째 row의 모든 키와 값 출력
+    if (detailForProcess.length > 0) {
+      const sample = detailForProcess[0]
+      const keys = Object.keys(sample)
+      console.log(`🔍 [${processName}] 업종별데이터 필드명:`, keys.join(', '))
+      // 수량 관련 필드 찾기
+      const qtyFields = keys.filter(k => k.includes('수량') || k.includes('양품') || k.includes('불량'))
+      console.log(`🔍 [${processName}] 수량 관련 필드:`, qtyFields.map(k => `${k}=${sample[k]}`).join(', '))
+    }
+
     // 설비(라인)명 기준으로 직접 집계
     detailForProcess.forEach(row => {
       // 설비명 추출 - 다양한 필드명 지원
@@ -207,9 +217,13 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         equipName = '기타'
       }
 
-      // 양품수량, 불량수량 직접 사용
-      const goodQty = parseNumber(row.양품수량 as string | number)
-      const defectQty = parseNumber(row.불량수량 as string | number)
+      // 양품수량, 불량수량 - 다양한 필드명 지원
+      const goodQty = parseNumber(
+        row.양품수량 || row['양품 수량'] || row.良品数量 || row.good_qty || 0 as string | number
+      )
+      const defectQty = parseNumber(
+        row.불량수량 || row['불량 수량'] || row.不良数量 || row.defect_qty || 0 as string | number
+      )
       const time = parseNumber(row['작업시간(분)'] || row['가동시간(분)'] || 0)
 
       if (!equip[equipName]) equip[equipName] = { good: 0, defect: 0, time: 0 }
