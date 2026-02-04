@@ -440,10 +440,10 @@ export default function DowntimeDashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis
                 dataKey="name"
-                tick={{ fontSize: 10 }}
-                angle={-45}
+                tick={{ fontSize: 9 }}
+                angle={-90}
                 textAnchor="end"
-                height={80}
+                height={100}
                 interval={0}
               />
               <YAxis
