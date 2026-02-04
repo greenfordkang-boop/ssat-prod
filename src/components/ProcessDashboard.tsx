@@ -110,6 +110,10 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   const [ctModalOpen, setCtModalOpen] = useState(false)
   const [selectedCtEquipment, setSelectedCtEquipment] = useState<string | null>(null)
 
+  // 자재불량 상세 팝업 상태
+  const [materialDetailModalOpen, setMaterialDetailModalOpen] = useState(false)
+  const [selectedMaterialRow, setSelectedMaterialRow] = useState<Record<string, unknown> | null>(null)
+
   // 정렬 상태
   const [equipSort, setEquipSort] = useState<SortConfig>(null)
   const [uphSort, setUphSort] = useState<SortConfig>(null)
@@ -1201,43 +1205,137 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
             </div>
             {materialDefectData.length === 0 ? (
               <p className="text-gray-500">자재불량 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
-            ) : showMaterialTable && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50">
-                      {Object.keys(materialDefectData[0] || {}).slice(0, 10).map(key => (
-                        <SortableHeader
-                          key={key}
-                          label={key}
-                          sortKey={key}
-                          sortConfig={materialSort}
-                          onSort={(k) => handleSort(setMaterialSort, k, materialSort)}
-                        />
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materialDefectData.map((row, idx) => (
-                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-100'}>
-                        {Object.entries(row).slice(0, 10).map(([key, val], i) => {
-                          const numVal = parseNumber(val as string | number)
-                          const isNumeric = !isNaN(numVal) && numVal > 0
-                          return (
-                            <td key={i} className={`px-4 py-3 ${isNumeric ? 'text-right font-medium text-red-600' : ''}`}>
-                              {isNumeric ? formatNumber(numVal) : String(val || '')}
-                            </td>
-                          )
-                        })}
+            ) : showMaterialTable && (() => {
+              // 테이블에 표시할 컬럼 (파일 순서대로, 첫번째 빈컬럼 제외)
+              const allKeys = Object.keys(materialDefectData[0] || {})
+              const displayKeys = allKeys.filter(k => {
+                const keyStr = String(k).trim()
+                // 첫번째 빈 컬럼, ID 제외
+                if (!keyStr || keyStr === 'id') return false
+                // 불량 유형 컬럼 제외 (괄호로 시작하는 컬럼)
+                if (keyStr.startsWith('(')) return false
+                return true
+              }).slice(0, 7) // 최대 7개 컬럼
+
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="px-4 py-3 text-center font-semibold text-slate-600 w-12">#</th>
+                        {displayKeys.map(key => (
+                          <SortableHeader
+                            key={key}
+                            label={key}
+                            sortKey={key}
+                            sortConfig={materialSort}
+                            onSort={(k) => handleSort(setMaterialSort, k, materialSort)}
+                            align={key === '불량합계' ? 'right' : 'left'}
+                          />
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {materialDefectData.map((row, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-100'}>
+                          <td className="px-4 py-3 text-center text-slate-400">{idx + 1}</td>
+                          {displayKeys.map((key, i) => {
+                            const val = row[key]
+                            const isDefectTotal = key === '불량합계'
+                            const numVal = parseNumber(val as string | number)
+
+                            if (isDefectTotal && numVal > 0) {
+                              return (
+                                <td key={i} className="px-4 py-3 text-right">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedMaterialRow(row as Record<string, unknown>)
+                                      setMaterialDetailModalOpen(true)
+                                    }}
+                                    className="font-bold text-red-600 hover:text-red-800 hover:underline cursor-pointer"
+                                  >
+                                    {formatNumber(numVal)}
+                                  </button>
+                                </td>
+                              )
+                            }
+
+                            return (
+                              <td key={i} className={`px-4 py-3 ${isDefectTotal ? 'text-right text-slate-400' : ''}`}>
+                                {isDefectTotal ? formatNumber(numVal) : String(val || '')}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
           </div>
         </>
       )}
+
+      {/* 자재불량 유형 상세 팝업 모달 */}
+      {materialDetailModalOpen && selectedMaterialRow && (() => {
+        // 불량 유형 컬럼 추출 (괄호로 시작하는 컬럼)
+        const defectTypes = Object.entries(selectedMaterialRow)
+          .filter(([key, val]) => {
+            const keyStr = String(key).trim()
+            return keyStr.startsWith('(') && parseNumber(val as string | number) > 0
+          })
+          .map(([key, val]) => ({ type: key, count: parseNumber(val as string | number) }))
+          .sort((a, b) => b.count - a.count)
+
+        const partName = String(selectedMaterialRow['부품명'] || selectedMaterialRow['품목명'] || '품목')
+        const totalDefect = parseNumber(selectedMaterialRow['불량합계'] as string | number)
+
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setMaterialDetailModalOpen(false)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* 모달 헤더 */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-orange-50 to-orange-100">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <span className="text-orange-500">🔶</span>
+                  불량 유형 상세
+                </h3>
+                <button
+                  onClick={() => setMaterialDetailModalOpen(false)}
+                  className="p-2 hover:bg-orange-200 rounded-lg transition"
+                >
+                  <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* 모달 내용 */}
+              <div className="p-6">
+                <div className="mb-4 p-4 bg-slate-50 rounded-lg">
+                  <div className="text-sm text-slate-500 mb-1">부품명</div>
+                  <div className="font-semibold text-slate-800">{partName}</div>
+                  <div className="text-sm text-slate-500 mt-2">총 불량수량</div>
+                  <div className="text-2xl font-bold text-red-600">{formatNumber(totalDefect)}</div>
+                </div>
+
+                {defectTypes.length === 0 ? (
+                  <p className="text-slate-500 text-center py-4">불량 유형 상세 데이터가 없습니다.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {defectTypes.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+                        <span className="text-slate-700">{item.type}</span>
+                        <span className="font-bold text-red-600">{formatNumber(item.count)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* 불량 상세 팝업 모달 */}
       {defectModalOpen && selectedEquipment && (
