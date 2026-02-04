@@ -249,18 +249,19 @@ export default function DowntimeDashboard() {
             <div className="w-1 h-6 bg-red-500 rounded" />
             <h2 className="text-xl font-bold text-slate-800">비가동 현황</h2>
           </div>
-          {processList.length > 0 && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-500">공정 선택:</span>
             <select
               value={processFilter}
               onChange={(e) => setProcessFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm font-medium"
+              className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm font-medium focus:ring-2 focus:ring-red-500 min-w-[140px]"
             >
-              <option value="all">✓ 전체 공정</option>
+              <option value="all">전체 공정</option>
               {processList.map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
-          )}
+          </div>
         </div>
       </div>
 
