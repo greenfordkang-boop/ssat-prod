@@ -119,10 +119,16 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   const [uphSort, setUphSort] = useState<SortConfig>(null)
   const [ctSort, setCtSort] = useState<SortConfig>(null)
   const [materialSort, setMaterialSort] = useState<SortConfig>(null)
+  const [packagingSort, setPackagingSort] = useState<SortConfig>(null)
 
   // 필터 상태
   const [equipFilter, setEquipFilter] = useState('')
   const [materialFilter, setMaterialFilter] = useState('')
+  const [packagingFilter, setPackagingFilter] = useState('')
+
+  // 검포장 상세 팝업 상태
+  const [packagingDetailModalOpen, setPackagingDetailModalOpen] = useState(false)
+  const [selectedPackagingRow, setSelectedPackagingRow] = useState<Record<string, unknown> | null>(null)
 
   // 공정명 변환
   const processName = PROCESS_MAPPING[process as keyof typeof PROCESS_MAPPING] || process
@@ -560,11 +566,141 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     setCtModalOpen(true)
   }
 
-  // 검포장 데이터
+  // 검포장 데이터 (정렬/필터 적용)
   const packagingData = useMemo(() => {
-    return data.packagingStatusData.filter(row =>
+    let result = data.packagingStatusData.filter(row =>
       row.공정 === processName || !row.공정
-    ).slice(0, 50)
+    )
+
+    // 필터 적용
+    if (packagingFilter) {
+      result = result.filter(row => {
+        const searchStr = packagingFilter.toLowerCase()
+        return Object.values(row).some(val =>
+          String(val || '').toLowerCase().includes(searchStr)
+        )
+      })
+    }
+
+    // 정렬 적용
+    if (packagingSort) {
+      result = [...result].sort((a, b) => {
+        const aVal = a[packagingSort.key as keyof typeof a]
+        const bVal = b[packagingSort.key as keyof typeof b]
+        const aNum = parseNumber(aVal as string | number)
+        const bNum = parseNumber(bVal as string | number)
+
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return packagingSort.direction === 'asc' ? aNum - bNum : bNum - aNum
+        }
+        const cmp = String(aVal || '').localeCompare(String(bVal || ''))
+        return packagingSort.direction === 'asc' ? cmp : -cmp
+      })
+    }
+
+    return result.slice(0, 100)
+  }, [data.packagingStatusData, processName, packagingFilter, packagingSort])
+
+  // 검포장 통계 (대시보드용)
+  const packagingStats = useMemo(() => {
+    const allData = data.packagingStatusData.filter(row =>
+      row.공정 === processName || !row.공정
+    )
+
+    if (allData.length === 0) return null
+
+    const keys = Object.keys(allData[0] || {})
+
+    // 수량 관련 필드 찾기
+    const findKey = (keywords: string[]) => keys.find(k =>
+      keywords.some(kw => String(k).includes(kw))
+    )
+
+    const qtyKey = findKey(['검사수량', '포장수량', '수량', '생산수량'])
+    const goodKey = findKey(['양품', '합격', '정상'])
+    const defectKey = findKey(['불량', '불합격', 'NG'])
+    const dateKey = findKey(['생산일자', '검사일자', '포장일자', '일자'])
+    const productKey = findKey(['품목명', '부품명', '품명', '제품명'])
+    const workerKey = findKey(['작업자', '검사원', '포장원', '담당자'])
+
+    // 총계 계산
+    const totalQty = qtyKey ? allData.reduce((sum, row) => sum + parseNumber(row[qtyKey] as string | number), 0) : 0
+    const totalGood = goodKey ? allData.reduce((sum, row) => sum + parseNumber(row[goodKey] as string | number), 0) : 0
+    const totalDefect = defectKey ? allData.reduce((sum, row) => sum + parseNumber(row[defectKey] as string | number), 0) : 0
+    const defectRate = totalQty > 0 ? (totalDefect / totalQty * 100) : 0
+
+    // 일자별 추이
+    const dataByDate: Record<string, { qty: number; defect: number }> = {}
+    allData.forEach(row => {
+      const dateStr = dateKey ? String(row[dateKey] || '') : ''
+      if (!dateStr) return
+
+      let day = ''
+      if (dateStr.includes('-')) day = dateStr.split('-')[2] || ''
+      else if (dateStr.includes('/')) day = dateStr.split('/')[2] || ''
+      else if (dateStr.length >= 8) day = dateStr.substring(6, 8)
+      if (!day) return
+
+      const dayNum = parseInt(day)
+      if (isNaN(dayNum)) return
+
+      const dayKey = String(dayNum)
+      if (!dataByDate[dayKey]) dataByDate[dayKey] = { qty: 0, defect: 0 }
+      dataByDate[dayKey].qty += qtyKey ? parseNumber(row[qtyKey] as string | number) : 0
+      dataByDate[dayKey].defect += defectKey ? parseNumber(row[defectKey] as string | number) : 0
+    })
+
+    const dailyTrend = Object.entries(dataByDate)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([day, val]) => ({ day: `${day}일`, qty: val.qty, defect: val.defect }))
+
+    // 작업자별 실적
+    const dataByWorker: Record<string, { qty: number; defect: number }> = {}
+    if (workerKey) {
+      allData.forEach(row => {
+        const worker = String(row[workerKey] || '기타')
+        if (!dataByWorker[worker]) dataByWorker[worker] = { qty: 0, defect: 0 }
+        dataByWorker[worker].qty += qtyKey ? parseNumber(row[qtyKey] as string | number) : 0
+        dataByWorker[worker].defect += defectKey ? parseNumber(row[defectKey] as string | number) : 0
+      })
+    }
+
+    const topWorkers = Object.entries(dataByWorker)
+      .sort((a, b) => b[1].qty - a[1].qty)
+      .slice(0, 5)
+      .map(([name, val]) => ({
+        name: name.length > 10 ? name.slice(0, 10) + '...' : name,
+        qty: val.qty,
+        defect: val.defect
+      }))
+
+    // 품목별 실적
+    const dataByProduct: Record<string, number> = {}
+    if (productKey) {
+      allData.forEach(row => {
+        const product = String(row[productKey] || '기타')
+        const qty = qtyKey ? parseNumber(row[qtyKey] as string | number) : 1
+        dataByProduct[product] = (dataByProduct[product] || 0) + qty
+      })
+    }
+
+    const topProducts = Object.entries(dataByProduct)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, value]) => ({ name: name.length > 12 ? name.slice(0, 12) + '...' : name, value }))
+
+    return {
+      totalItems: allData.length,
+      totalQty,
+      totalGood,
+      totalDefect,
+      defectRate,
+      dailyTrend,
+      topWorkers,
+      topProducts,
+      qtyKey,
+      defectKey
+    }
   }, [data.packagingStatusData, processName])
 
   // 불량수리 데이터
@@ -1027,54 +1163,187 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       )}
 
       {subMenu === 'packaging' && (
-        <div className="bg-white rounded-xl p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold flex items-center gap-2">
-              검포장 현황
-              <span className="text-sm font-normal text-slate-400">({packagingData.length}건)</span>
-            </h3>
-            <div className="flex items-center gap-3">
-              {packagingData.length > 0 && (
-                <button
-                  onClick={() => downloadExcel(packagingData as Record<string, unknown>[], `${processName}_검포장현황`)}
-                  className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
-                >
-                  📥 엑셀
-                </button>
-              )}
-              <button
-                onClick={() => setShowPackagingTable(!showPackagingTable)}
-                className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 bg-slate-100 rounded-lg"
-              >
-                {showPackagingTable ? '접기' : '펼치기'}
-              </button>
-            </div>
-          </div>
-          {packagingData.length === 0 ? (
-            <p className="text-gray-500">검포장 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
-          ) : showPackagingTable && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50">
-                    {Object.keys(packagingData[0] || {}).slice(0, 8).map(key => (
-                      <th key={key} className="px-4 py-3 text-left font-semibold text-slate-600">{key}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {packagingData.map((row, idx) => (
-                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                      {Object.values(row).slice(0, 8).map((val, i) => (
-                        <td key={i} className="px-4 py-3">{String(val || '')}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <>
+          {/* 검포장 대시보드 카드 */}
+          {packagingStats && (
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
+                <div className="text-xs font-semibold text-blue-600 uppercase mb-2">총 검사/포장 수량</div>
+                <div className="text-2xl font-bold text-blue-700">{formatNumber(packagingStats.totalQty)}</div>
+                <div className="text-sm text-blue-500 mt-1">{packagingStats.totalItems}건</div>
+              </div>
+              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-5 border border-green-200">
+                <div className="text-xs font-semibold text-green-600 uppercase mb-2">양품 수량</div>
+                <div className="text-2xl font-bold text-green-700">{formatNumber(packagingStats.totalGood)}</div>
+                <div className="text-sm text-green-500 mt-1">
+                  {packagingStats.totalQty > 0 ? ((packagingStats.totalGood / packagingStats.totalQty) * 100).toFixed(1) : 0}%
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-5 border border-red-200">
+                <div className="text-xs font-semibold text-red-600 uppercase mb-2">불량 수량</div>
+                <div className="text-2xl font-bold text-red-700">{formatNumber(packagingStats.totalDefect)}</div>
+                <div className="text-sm text-red-500 mt-1">{packagingStats.defectRate.toFixed(2)}%</div>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
+                <div className="text-xs font-semibold text-purple-600 uppercase mb-2">건당 평균 수량</div>
+                <div className="text-2xl font-bold text-purple-700">
+                  {packagingStats.totalItems > 0 ? formatNumber(Math.round(packagingStats.totalQty / packagingStats.totalItems)) : 0}
+                </div>
+                <div className="text-sm text-purple-500 mt-1">개/건</div>
+              </div>
             </div>
           )}
-        </div>
+
+          {/* 일자별 추이 차트 */}
+          {packagingStats && packagingStats.dailyTrend.length > 0 && (
+            <div className="bg-white rounded-xl p-6 border border-gray-100">
+              <h3 className="text-base font-semibold mb-4">일자별 검포장 현황</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={packagingStats.dailyTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                  <YAxis tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v) => formatNumber(v as number)} />
+                  <Line type="monotone" dataKey="qty" name="검사수량" stroke={CHART_COLORS.pastel[0]} strokeWidth={2} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="defect" name="불량수량" stroke={CHART_COLORS.pastel[3]} strokeWidth={2} dot={{ r: 4 }} />
+                  <Legend />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* 차트 영역 (품목별 + 작업자별) */}
+          {packagingStats && (packagingStats.topProducts.length > 0 || packagingStats.topWorkers.length > 0) && (
+            <div className="grid grid-cols-2 gap-6">
+              {/* 품목별 파이차트 */}
+              {packagingStats.topProducts.length > 0 && (
+                <div className="bg-white rounded-xl p-6 border border-gray-100">
+                  <h3 className="text-base font-semibold mb-4">품목별 분포</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie
+                        data={packagingStats.topProducts}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={2}
+                        dataKey="value"
+                        label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                        labelLine={false}
+                      >
+                        {packagingStats.topProducts.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={CHART_COLORS.pastel[index % CHART_COLORS.pastel.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v) => formatNumber(v as number)} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* 작업자별 실적 TOP 5 */}
+              {packagingStats.topWorkers.length > 0 && (
+                <div className="bg-white rounded-xl p-6 border border-gray-100">
+                  <h3 className="text-base font-semibold mb-4">작업자별 실적 TOP 5</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={packagingStats.topWorkers} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis type="number" tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
+                      <Tooltip formatter={(v) => formatNumber(v as number)} />
+                      <Bar dataKey="qty" name="검사수량" fill={CHART_COLORS.pastel[0]} radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 검포장 테이블 */}
+          <div className="bg-white rounded-xl p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold flex items-center gap-2">
+                검포장 현황
+                <span className="text-sm font-normal text-slate-400">({packagingData.length}건)</span>
+              </h3>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  placeholder="검색..."
+                  value={packagingFilter}
+                  onChange={(e) => setPackagingFilter(e.target.value)}
+                  className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg w-40"
+                />
+                {packagingData.length > 0 && (
+                  <button
+                    onClick={() => downloadExcel(packagingData as Record<string, unknown>[], `${processName}_검포장현황`)}
+                    className="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
+                  >
+                    📥 엑셀
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowPackagingTable(!showPackagingTable)}
+                  className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 bg-slate-100 rounded-lg"
+                >
+                  {showPackagingTable ? '접기' : '펼치기'}
+                </button>
+              </div>
+            </div>
+            {packagingData.length === 0 ? (
+              <p className="text-gray-500">검포장 데이터가 없습니다. 파일업로드 메뉴에서 업로드해주세요.</p>
+            ) : showPackagingTable && (() => {
+              const allKeys = Object.keys(packagingData[0] || {})
+              const displayKeys = allKeys.filter(k => {
+                const keyStr = String(k).trim()
+                if (!keyStr || keyStr === 'id') return false
+                return true
+              }).slice(0, 8)
+
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="px-4 py-3 text-center font-semibold text-slate-600 w-12">#</th>
+                        {displayKeys.map(key => (
+                          <SortableHeader
+                            key={key}
+                            label={key}
+                            sortKey={key}
+                            sortConfig={packagingSort}
+                            onSort={(k) => handleSort(setPackagingSort, k, packagingSort)}
+                          />
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {packagingData.map((row, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-100'}>
+                          <td className="px-4 py-3 text-center text-slate-400">{idx + 1}</td>
+                          {displayKeys.map((key, i) => {
+                            const val = row[key]
+                            const numVal = parseNumber(val as string | number)
+                            const isDefect = String(key).includes('불량')
+                            const isNumeric = !isNaN(numVal) && numVal > 0
+
+                            return (
+                              <td key={i} className={`px-4 py-3 ${isNumeric ? 'text-right tabular-nums' : ''} ${isDefect && isNumeric ? 'text-red-600 font-medium' : ''}`}>
+                                {isNumeric ? formatNumber(numVal) : String(val || '')}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+          </div>
+        </>
       )}
 
       {subMenu === 'defect-repair' && (
