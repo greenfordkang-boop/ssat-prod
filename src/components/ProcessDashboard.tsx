@@ -193,9 +193,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       const equipKeys = keys.filter(k =>
         k.includes('설비') || k.includes('LINE') || k.includes('Line') || k.includes('라인')
       )
-      console.log(`🏭 [${processName}] 전체 키:`, keys.slice(0, 20))
-      console.log(`🏭 [${processName}] 설비 관련 필드:`, equipKeys, '| 샘플값:', equipKeys.map(k => firstRow[k as keyof typeof firstRow]))
-      console.log(`🏭 [${processName}] getEquipmentName 결과:`, getEquipmentName(firstRow as Record<string, unknown>))
+      const equipValues = equipKeys.map(k => `${k}="${firstRow[k as keyof typeof firstRow]}"`)
+      console.log(`🏭🏭🏭 [${processName}] 설비필드: ${equipKeys.join(', ')} → 값: ${equipValues.join(', ')} → 결과: ${getEquipmentName(firstRow as Record<string, unknown>)}`)
     }
 
     processData.forEach(row => {
