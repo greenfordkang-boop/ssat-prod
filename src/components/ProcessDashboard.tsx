@@ -186,10 +186,26 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   const equipmentStats = useMemo(() => {
     const equip: Record<string, { good: number; defect: number; time: number }> = {}
 
-    // 업종별데이터에서 해당 공정 필터링
+    // 업종별데이터에서 해당 공정 + 월 필터링
     const detailForProcess = data.detailData.filter(row => {
       const rowProcess = String(row.공정 || row.공정명 || row.process || '')
-      return rowProcess === processName
+      if (rowProcess !== processName) return false
+
+      // 월 필터링
+      const dateStr = String(row.생산일자 || row.작업일자 || '')
+      if (!dateStr) return true // 날짜 없으면 포함
+
+      // 다양한 날짜 형식 처리
+      let month = 0
+      if (dateStr.includes('-')) {
+        month = parseInt(dateStr.split('-')[1]) || 0
+      } else if (dateStr.includes('/')) {
+        month = parseInt(dateStr.split('/')[1]) || 0
+      } else if (dateStr.length === 8) {
+        month = parseInt(dateStr.substring(4, 6)) || 0
+      }
+
+      return month === 0 || month === selectedMonth
     })
 
     console.log(`🏭 [${processName}] 업종별데이터 건수:`, detailForProcess.length)
@@ -264,16 +280,29 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result
-  }, [data.detailData, processName, equipFilter, equipSort])
+  }, [data.detailData, processName, selectedMonth, equipFilter, equipSort])
 
   // 선택된 설비의 불량 상세 데이터 (업종별데이터 기준)
   const defectDetails = useMemo(() => {
     if (!selectedEquipment) return []
 
-    // 업종별데이터에서 해당 공정 필터링
+    // 업종별데이터에서 해당 공정 + 월 필터링
     const detailForProcess = data.detailData.filter(row => {
       const rowProcess = String(row.공정 || row.공정명 || row.process || '')
-      return rowProcess === processName
+      if (rowProcess !== processName) return false
+
+      // 월 필터링
+      const dateStr = String(row.생산일자 || row.작업일자 || '')
+      if (!dateStr) return true
+      let month = 0
+      if (dateStr.includes('-')) {
+        month = parseInt(dateStr.split('-')[1]) || 0
+      } else if (dateStr.includes('/')) {
+        month = parseInt(dateStr.split('/')[1]) || 0
+      } else if (dateStr.length === 8) {
+        month = parseInt(dateStr.substring(4, 6)) || 0
+      }
+      return month === 0 || month === selectedMonth
     })
 
     return detailForProcess
@@ -312,7 +341,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         }
       })
       .sort((a, b) => a.생산일자.localeCompare(b.생산일자))
-  }, [data.detailData, processName, selectedEquipment])
+  }, [data.detailData, processName, selectedMonth, selectedEquipment])
 
   // 불량 상세 팝업 열기
   const openDefectModal = (equipmentName: string) => {
