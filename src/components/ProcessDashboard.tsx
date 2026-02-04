@@ -615,25 +615,37 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
     if (allData.length === 0) return null
 
-    // 컬럼 키 추출 (숫자 값이 있는 컬럼 = 불량 유형)
+    // 컬럼 키 추출 - 불량 유형 컬럼만 (괄호로 시작하는 컬럼)
     const sampleRow = allData[0]
     const keys = Object.keys(sampleRow)
+
+    // 제외할 컬럼 목록 (ID, 텍스트 컬럼)
+    const excludeKeys = ['id', '', ' ', '규격', '부품명', '품목명', '품목코드', '부품코드',
+                         '공정', '생산일자', '불량합계', '고객사 P/N', '고객사']
+
+    // 불량 유형 컬럼: (xxx)형식 이거나, 숫자값이 있고 제외목록에 없는 컬럼
     const defectTypeKeys = keys.filter(k => {
-      if (['id', '규격', '부품명', '품목명', '품목코드', '공정'].includes(k)) return false
-      // 숫자 값이 있는 컬럼만
-      return allData.some(row => parseNumber(row[k] as string | number) > 0)
+      const keyStr = String(k).trim()
+      if (!keyStr || excludeKeys.includes(keyStr)) return false
+      // (xxx) 형식의 컬럼명인 경우 (예: (조립)파손, (도장)S/C)
+      if (keyStr.startsWith('(') && keyStr.includes(')')) return true
+      return false
     })
 
     // 불량 유형별 합계
     const defectByType: Record<string, number> = {}
     defectTypeKeys.forEach(key => {
-      defectByType[key] = allData.reduce((sum, row) =>
-        sum + parseNumber(row[key] as string | number), 0
+      const sum = allData.reduce((acc, row) =>
+        acc + parseNumber(row[key] as string | number), 0
       )
+      if (sum > 0) defectByType[key] = sum
     })
 
-    // 총 불량 수량
-    const totalDefect = Object.values(defectByType).reduce((a, b) => a + b, 0)
+    // 총 불량 수량 - '불량합계' 컬럼 사용, 없으면 개별 합계
+    const hasDefectTotal = keys.includes('불량합계')
+    const totalDefect = hasDefectTotal
+      ? allData.reduce((sum, row) => sum + parseNumber(row['불량합계'] as string | number), 0)
+      : Object.values(defectByType).reduce((a, b) => a + b, 0)
 
     // 파이 차트용 데이터 (상위 6개 + 기타)
     const sortedTypes = Object.entries(defectByType)
@@ -649,14 +661,16 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     // 상위 불량 유형
     const topDefectType = sortedTypes[0] || ['없음', 0]
 
-    // 부품별 불량 건수
+    // 부품별 불량 건수 - '불량합계' 컬럼 사용
     const defectByPart: Record<string, number> = {}
     allData.forEach(row => {
       const partName = String(row.부품명 || row.품목명 || '기타')
-      const rowTotal = defectTypeKeys.reduce((sum, key) =>
-        sum + parseNumber(row[key] as string | number), 0
-      )
-      defectByPart[partName] = (defectByPart[partName] || 0) + rowTotal
+      const rowTotal = hasDefectTotal
+        ? parseNumber(row['불량합계'] as string | number)
+        : defectTypeKeys.reduce((sum, key) => sum + parseNumber(row[key] as string | number), 0)
+      if (rowTotal > 0) {
+        defectByPart[partName] = (defectByPart[partName] || 0) + rowTotal
+      }
     })
 
     const topParts = Object.entries(defectByPart)
