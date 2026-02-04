@@ -135,42 +135,37 @@ export default function DowntimeDashboard() {
     })
   }, [data.availabilityData, selectedMonth, processFilter])
 
-  // 비가동 사유별 분석 (컬럼별 비가동 사유 구조 지원)
+  // 비가동 사유별 분석 (M열 이후 컬럼 = 비가동사유)
   const downtimeByReason = useMemo(() => {
     const reasonMap = new Map<string, number>()
 
-    // 제외할 메타 컬럼 키워드 (비가동 사유가 아닌 컬럼)
-    const excludeKeywords = [
-      '생산일자', '일자', 'date',
-      '공정', 'process',
-      '설비', 'LINE', 'line', '라인',
-      '주/야간', '주야간', '근무',
-      '무인',
-      '조업시간', '조업',
-      '가동시간', '가동율', '가동률',
-      '비가동합계', '합계',
-      '시간가동율', '시간가동률',
+    // A~L열: 제외할 메타 컬럼 (정확히 일치하는 것만)
+    const metaColumns = new Set([
+      '생산일자', '공정', '설비/LINE', '설비/line', '설비(라인)명',
+      '주/야간', '주야간', '무인',
+      '조업시간', '조업시간(분)',
+      '가동시간', '가동시간(분)',
+      '비가동합계', '비가동시간합계',
+      '시간가동율', '시간가동율(%)', '시간가동률', '시간가동률(%)',
       '계획정지합계',
-      '설비가동율', '설비가동률',
-      'id', 'data', 'col_'
-    ]
+      '설비가동율', '설비가동율(%)', '설비가동률', '설비가동률(%)',
+      'id', 'created_at', 'user_id'
+    ])
 
     filteredData.forEach(item => {
       const keys = Object.keys(item)
 
-      // 각 컬럼을 순회하며 비가동 사유 컬럼 찾기
+      // 각 컬럼을 순회하며 비가동 사유 컬럼 찾기 (M열 이후)
       keys.forEach(key => {
-        const lowerKey = key.toLowerCase()
+        // 메타 컬럼은 제외 (정확히 일치)
+        const cleanKey = key.replace(/_\d+$/, '') // 중복 헤더 접미사 제거
+        if (metaColumns.has(cleanKey)) return
+        if (metaColumns.has(key)) return
 
-        // 제외할 키 체크 (부분 일치)
-        const isExcluded = excludeKeywords.some(ex => lowerKey.includes(ex.toLowerCase()))
-        if (isExcluded) return
-
+        // 숫자가 아닌 값은 제외
         const value = parseFloat(String(item[key as keyof typeof item] || 0)) || 0
         if (value > 0) {
-          // 컬럼명에서 _숫자 접미사 제거 (중복 헤더 처리로 인한)
-          const reason = key.replace(/_\d+$/, '')
-          reasonMap.set(reason, (reasonMap.get(reason) || 0) + value)
+          reasonMap.set(cleanKey, (reasonMap.get(cleanKey) || 0) + value)
         }
       })
     })
@@ -200,21 +195,18 @@ export default function DowntimeDashboard() {
   const downtimeByEquipment = useMemo(() => {
     const equipMap = new Map<string, { total: number; downtime: number }>()
 
-    // 제외할 메타 컬럼 키워드 (비가동 사유가 아닌 컬럼)
-    const excludeKeywords = [
-      '생산일자', '일자', 'date',
-      '공정', 'process',
-      '설비', 'LINE', 'line', '라인',
-      '주/야간', '주야간', '근무',
-      '무인',
-      '조업시간', '조업',
-      '가동시간', '가동율', '가동률',
-      '비가동합계', '합계',
-      '시간가동율', '시간가동률',
+    // A~L열: 제외할 메타 컬럼 (정확히 일치)
+    const metaColumns = new Set([
+      '생산일자', '공정', '설비/LINE', '설비/line', '설비(라인)명',
+      '주/야간', '주야간', '무인',
+      '조업시간', '조업시간(분)',
+      '가동시간', '가동시간(분)',
+      '비가동합계', '비가동시간합계',
+      '시간가동율', '시간가동율(%)', '시간가동률', '시간가동률(%)',
       '계획정지합계',
-      '설비가동율', '설비가동률',
-      'id', 'data', 'col_'
-    ]
+      '설비가동율', '설비가동율(%)', '설비가동률', '설비가동률(%)',
+      'id', 'created_at', 'user_id'
+    ])
 
     filteredData.forEach(item => {
       // 설비/LINE 컬럼 기준으로 그룹핑
@@ -228,16 +220,15 @@ export default function DowntimeDashboard() {
         item['가동시간(분)'] || item.가동시간 || item.operating_minutes || 0
       )) || 0
 
-      // 비가동합계가 있으면 사용, 없으면 각 비가동 사유 컬럼 합산
+      // 비가동합계가 있으면 사용, 없으면 M열 이후 컬럼 합산
       let downtimeTotal = parseFloat(String(item.비가동합계 || 0)) || 0
 
       if (downtimeTotal === 0) {
-        // 각 비가동 사유 컬럼 합산
+        // M열 이후 비가동사유 컬럼 합산
         const keys = Object.keys(item)
         keys.forEach(key => {
-          const lowerKey = key.toLowerCase()
-          const isExcluded = excludeKeywords.some(ex => lowerKey.includes(ex.toLowerCase()))
-          if (isExcluded) return
+          const cleanKey = key.replace(/_\d+$/, '')
+          if (metaColumns.has(cleanKey) || metaColumns.has(key)) return
           downtimeTotal += parseFloat(String(item[key as keyof typeof item] || 0)) || 0
         })
       }
