@@ -14,7 +14,7 @@ const parseExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
   return jsonData as Record<string, unknown>[]
 }
 
-// 가동율 엑셀 파싱 - 2행을 헤더로 사용 (병합 셀 문제 해결)
+// 가동율 엑셀 파싱 - 1행을 헤더로 사용 (index 0)
 const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
   const workbook = XLSX.read(buffer, { type: 'array' })
   const firstSheetName = workbook.SheetNames[0]
@@ -23,10 +23,10 @@ const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] 
   // 시트 범위 확인
   const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
 
-  // 2행(index 1)에서 직접 헤더 읽기 (병합 셀 영향 방지)
+  // 1행(index 0)에서 직접 헤더 읽기
   const headers: string[] = []
   for (let col = range.s.c; col <= range.e.c; col++) {
-    const cellAddress = XLSX.utils.encode_cell({ r: 1, c: col }) // 2행 (0-based index = 1)
+    const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col }) // 1행 (0-based index = 0)
     const cell = worksheet[cellAddress]
     const value = cell ? String(cell.v || '').trim() : ''
 
@@ -44,11 +44,11 @@ const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] 
     }
   }
 
-  console.log('📊 가동율 엑셀 2행 헤더:', headers.slice(0, 15).join(', '), '...')
+  console.log('📊 가동율 엑셀 1행 헤더:', headers.slice(0, 15).join(', '), '...')
 
-  // 3행부터 데이터 읽기
+  // 2행부터 데이터 읽기
   const data: Record<string, unknown>[] = []
-  for (let row = 2; row <= range.e.r; row++) { // 3행부터 (0-based index = 2)
+  for (let row = 1; row <= range.e.r; row++) { // 2행부터 (0-based index = 1)
     const rowData: Record<string, unknown> = {}
     let hasData = false
 
@@ -69,7 +69,7 @@ const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] 
     }
   }
 
-  console.log('📊 가동율 엑셀 파싱 완료 (2행 헤더 사용):', data.length, '건')
+  console.log('📊 가동율 엑셀 파싱 완료 (1행 헤더 사용):', data.length, '건')
   if (data.length > 0) {
     console.log('📋 첫 데이터 키:', Object.keys(data[0]).slice(0, 15).join(', '), '...')
   }

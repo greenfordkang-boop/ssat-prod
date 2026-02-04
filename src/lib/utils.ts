@@ -134,13 +134,13 @@ export function parseCSV(text: string): Record<string, string>[] {
   return data
 }
 
-// 가동율 CSV 파싱 - 2행을 헤더로 사용 (비가동 사유가 2행에 있음)
+// 가동율 CSV 파싱 - 1행을 헤더로 사용 (index 0)
 export function parseAvailabilityCSV(text: string): Record<string, string>[] {
   const lines = text.split('\n').filter(line => line.trim())
-  if (lines.length < 3) return [] // 최소 3행 필요 (1행: 메인헤더, 2행: 서브헤더, 3행~: 데이터)
+  if (lines.length < 2) return [] // 최소 2행 필요 (1행: 헤더, 2행~: 데이터)
 
-  // 2행을 헤더로 사용 (비가동 사유명)
-  const rawHeaders = lines[1].split(',').map(h => h.trim().replace(/^\uFEFF/, ''))
+  // 1행을 헤더로 사용 (index 0)
+  const rawHeaders = lines[0].split(',').map(h => h.trim().replace(/^\uFEFF/, ''))
   const validHeaderIndices: number[] = []
   const headers: string[] = []
 
@@ -158,12 +158,12 @@ export function parseAvailabilityCSV(text: string): Record<string, string>[] {
     }
   })
 
-  console.log('📋 가동율 CSV 헤더 (2행 기준):', headers.slice(0, 10).join(', '), '...')
+  console.log('📋 가동율 CSV 헤더 (1행 기준):', headers.slice(0, 10).join(', '), '...')
 
   const data: Record<string, string>[] = []
 
-  // 3행부터 데이터 (인덱스 2부터)
-  for (let i = 2; i < lines.length; i++) {
+  // 2행부터 데이터 (인덱스 1부터)
+  for (let i = 1; i < lines.length; i++) {
     const values: string[] = []
     let current = ''
     let inQuotes = false

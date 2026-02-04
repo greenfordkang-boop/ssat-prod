@@ -48,6 +48,7 @@ const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
 
 // A~L열 메타 컬럼 (비가동사유가 아닌 컬럼)
 const META_COLUMNS = new Set([
+  ' ', '', 'col_0', // 첫 번째 빈 컬럼
   '생산일자', '공정', '설비/LINE', '설비/line', '설비(라인)명',
   '주/야간', '주야간', '무인',
   '조업시간', '조업시간(분)',
