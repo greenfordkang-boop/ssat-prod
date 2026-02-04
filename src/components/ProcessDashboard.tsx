@@ -347,6 +347,12 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     if (data.ctData.length > 0) {
       console.log('🔧 CT 데이터 샘플 키:', Object.keys(data.ctData[0]))
       console.log('🔧 CT 데이터 샘플 값:', data.ctData[0])
+      // 품목 관련 필드 찾기
+      const productKeys = Object.keys(data.ctData[0]).filter(k =>
+        k.includes('품목') || k.includes('품명') || k.includes('제품') ||
+        k.includes('ITEM') || k.includes('Item') || k.includes('모델') || k.includes('Model')
+      )
+      console.log('🔧 CT 품목 관련 필드:', productKeys)
     }
 
     const processCT = data.ctData.filter(row =>
@@ -364,8 +370,14 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         row['라인명'] || row['설비'] || '기타'
       )
 
-      // 품목명 찾기
-      const product = String(row.품목명 || row.품목코드 || row.product || row['품목'] || '')
+      // 품목명 찾기 (다양한 필드명 지원)
+      const product = String(
+        row.품목명 || row.품목코드 || row.product || row['품목'] ||
+        row.품명 || row.제품명 || row['제품코드'] || row['제품'] ||
+        row.ITEM || row.Item || row.item || row['ITEM_NAME'] || row['ITEM_CODE'] ||
+        row.모델 || row.Model || row.model || row['모델명'] ||
+        row['PRODUCT'] || row['Product'] || ''
+      )
 
       return {
         equipment,
@@ -411,7 +423,14 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       .map(row => {
         const standardCT = findCTValue(row, 'standard')
         const actualCT = findCTValue(row, 'actual')
-        const product = String(row.품목명 || row.품목코드 || row.product || row['품목'] || '-')
+        // 품목명 찾기 (다양한 필드명 지원)
+        const product = String(
+          row.품목명 || row.품목코드 || row.product || row['품목'] ||
+          row.품명 || row.제품명 || row['제품코드'] || row['제품'] ||
+          row.ITEM || row.Item || row.item || row['ITEM_NAME'] || row['ITEM_CODE'] ||
+          row.모델 || row.Model || row.model || row['모델명'] ||
+          row['PRODUCT'] || row['Product'] || '-'
+        )
         const date = String(row.생산일자 || row.date || row['일자'] || '-')
 
         return {
