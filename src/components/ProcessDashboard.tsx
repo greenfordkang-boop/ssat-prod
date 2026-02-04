@@ -245,19 +245,48 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     setDefectModalOpen(true)
   }
 
-  // UPH 분석
+  // 업종별 데이터에서 품목별 UPH/UPPH 매핑 생성
+  const productUphMap = useMemo(() => {
+    const map = new Map<string, { uph: number; upph: number }>()
+    data.detailData.forEach(row => {
+      // 품목명 또는 품목코드로 매핑
+      const product = String(row.품목명 || row.품목코드 || row['품목'] || '')
+      if (!product) return
+
+      const uph = parseNumber(row.UPH as string | number)
+      const upph = parseNumber(row.UPPH as string | number)
+
+      // 값이 있는 경우에만 저장 (더 큰 값으로 업데이트)
+      const existing = map.get(product)
+      if (!existing || uph > existing.uph || upph > existing.upph) {
+        map.set(product, {
+          uph: Math.max(uph, existing?.uph || 0),
+          upph: Math.max(upph, existing?.upph || 0)
+        })
+      }
+    })
+    return map
+  }, [data.detailData])
+
+  // UPH 분석 (업종별 데이터 기준)
   const uphAnalysis = useMemo(() => {
-    let result = processData.map(row => ({
-      equipment: getEquipmentName(row as Record<string, unknown>),
-      product: row.품목명 || '',
-      uph: parseNumber(row.UPH),
-      upph: parseNumber(row.UPPH),
-      standardCT: parseNumber(row['표준C/T']),
-      actualCT: parseNumber(row['실제C/T']),
-      ctEfficiency: parseNumber(row['표준C/T']) > 0
-        ? (parseNumber(row['표준C/T']) / parseNumber(row['실제C/T']) * 100)
-        : 0
-    }))
+    let result = processData.map(row => {
+      const product = row.품목명 || ''
+      const detailUph = productUphMap.get(product)
+
+      return {
+        equipment: getEquipmentName(row as Record<string, unknown>),
+        product,
+        // 업종별 데이터 우선, 없으면 생산실적 데이터 사용
+        uph: detailUph?.uph || parseNumber(row.UPH),
+        upph: detailUph?.upph || parseNumber(row.UPPH),
+        standardCT: parseNumber(row['표준C/T']),
+        actualCT: parseNumber(row['실제C/T']),
+        ctEfficiency: parseNumber(row['표준C/T']) > 0
+          ? (parseNumber(row['표준C/T']) / parseNumber(row['실제C/T']) * 100)
+          : 0
+      }
+    })
 
     // 정렬
     if (uphSort) {
@@ -270,7 +299,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result.slice(0, 50)
-  }, [processData, uphSort])
+  }, [processData, uphSort, productUphMap])
 
   // CT 데이터에서 유연하게 값 찾기 (표준/실제 구분 명확히)
   const findCTValue = (row: Record<string, unknown>, type: 'standard' | 'actual'): number => {
