@@ -145,6 +145,74 @@ export default function OverviewDashboard() {
   const [sortField, setSortField] = useState<string>('종합효율(OEE)')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
+  // 가동율 데이터에서 공정별 시간가동율 매핑 생성
+  const processAvailabilityMap = useMemo(() => {
+    const map = new Map<string, { operatingTime: number; totalTime: number; availRate: number }>()
+
+    // 선택된 월에 맞는 가동율 데이터 필터링
+    const filteredAvail = data.availabilityData.filter(row => {
+      const dateStr = String(row.date || row.일자 || row.생산일자 || '')
+      if (!dateStr) return true
+
+      let rowMonth = null
+      if (dateStr.includes('-')) {
+        rowMonth = parseInt(dateStr.split('-')[1]) || null
+      } else if (dateStr.includes('/')) {
+        const parts = dateStr.split('/')
+        rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0])
+      }
+      return !rowMonth || rowMonth === selectedMonth
+    })
+
+    filteredAvail.forEach(row => {
+      const process = String(row.공정 || row.process || '').trim()
+      if (!process || process === '합계' || process === 'TOTAL') return
+
+      // 기존 시간가동율 컬럼이 있으면 사용
+      const directRate = parseNumber(row.시간가동율 || row.가동율 || row.가동률 || row['시간가동율(%)'] || row['가동율(%)'])
+
+      // 조업시간과 가동시간으로 계산
+      const operatingTime = parseNumber(row.가동시간 || row['가동시간(분)'] || row.operating_minutes || 0)
+      const totalTime = parseNumber(row.조업시간 || row['조업시간(분)'] || row.scheduled_minutes || 0)
+      const downtimeTotal = parseNumber(row.비가동합계 || row.downtime_total || 0)
+
+      if (!map.has(process)) {
+        map.set(process, { operatingTime: 0, totalTime: 0, availRate: 0 })
+      }
+
+      const current = map.get(process)!
+
+      // 직접 시간가동율 값이 있고 유효하면 평균 계산을 위해 저장
+      if (directRate > 0 && directRate <= 100) {
+        // 가중평균을 위해 조업시간을 가중치로 사용
+        const weight = totalTime > 0 ? totalTime : 1
+        current.availRate = ((current.availRate * current.totalTime) + (directRate * weight)) / (current.totalTime + weight)
+        current.totalTime += weight
+      } else if (totalTime > 0) {
+        // 조업시간과 가동시간으로 계산
+        current.operatingTime += operatingTime
+        current.totalTime += totalTime
+      } else if (downtimeTotal > 0 && operatingTime > 0) {
+        // 비가동합계와 가동시간으로 계산
+        current.operatingTime += operatingTime
+        current.totalTime += operatingTime + downtimeTotal
+      }
+    })
+
+    // 최종 시간가동율 계산
+    const result = new Map<string, number>()
+    map.forEach((values, process) => {
+      if (values.availRate > 0) {
+        result.set(process, Math.round(values.availRate * 10) / 10)
+      } else if (values.totalTime > 0) {
+        const rate = (values.operatingTime / values.totalTime) * 100
+        result.set(process, Math.round(rate * 10) / 10)
+      }
+    })
+
+    return result
+  }, [data.availabilityData, selectedMonth])
+
   // 공정별 종합효율 계산 (테이블 데이터)
   const processOEE = useMemo(() => {
     const stats: Record<string, { production: number; good: number; defect: number; defectAmount: number }> = {}
@@ -177,9 +245,9 @@ export default function OverviewDashboard() {
       .filter(([, v]) => v.production > 0)
       .map(([name, values]) => {
         const qualityRate = values.production > 0 ? (values.good / values.production) * 100 : 0
-        // 시간가동율, 성능가동율은 100%로 가정 (별도 데이터 없으면)
-        const timeAvail = 100
-        const perfRate = 100
+        // 가동율 데이터에서 실제 시간가동율 가져오기 (없으면 100%)
+        const timeAvail = processAvailabilityMap.get(name) ?? 100
+        const perfRate = 100 // 성능가동율은 별도 데이터 없으면 100%
         const oee = (timeAvail * perfRate * qualityRate) / 10000
 
         return {
@@ -194,7 +262,7 @@ export default function OverviewDashboard() {
           '종합효율(OEE)': Math.round(oee * 10) / 10
         }
       })
-  }, [filteredData, data.priceData])
+  }, [filteredData, data.priceData, processAvailabilityMap])
 
   // 정렬된 데이터
   const sortedProcessOEE = useMemo(() => {
@@ -222,22 +290,26 @@ export default function OverviewDashboard() {
     let totalGood = 0
     let totalDefect = 0
     let totalDefectAmount = 0
+    let weightedTimeAvail = 0
 
     processOEE.forEach(row => {
       totalProduction += row.생산수량
       totalGood += row.양품수량
       totalDefect += row.불량수량
       totalDefectAmount += row.불량금액
+      // 생산량 가중 시간가동율
+      weightedTimeAvail += row.시간가동율 * row.생산수량
     })
 
     const avgQuality = totalProduction > 0 ? (totalGood / totalProduction) * 100 : 0
-    const avgTimeAvail = 100 // 시간가동율 데이터 없으면 100%
-    const avgPerfRate = 100 // 성능가동율 데이터 없으면 100%
+    // 생산량 기준 가중평균 시간가동율
+    const avgTimeAvail = totalProduction > 0 ? weightedTimeAvail / totalProduction : 100
+    const avgPerfRate = 100 // 성능가동율은 별도 데이터 없으면 100%
     const avgOEE = (avgTimeAvail * avgPerfRate * avgQuality) / 10000
 
     return {
       oee: Math.round(avgOEE * 10) / 10,
-      timeAvailability: avgTimeAvail,
+      timeAvailability: Math.round(avgTimeAvail * 10) / 10,
       performanceRate: avgPerfRate,
       qualityRate: Math.round(avgQuality * 10) / 10,
       totalDefect,
@@ -247,6 +319,54 @@ export default function OverviewDashboard() {
 
   // 월별 OEE 추이
   const monthlyOEE = useMemo(() => {
+    // 월별 시간가동율 계산 함수
+    const getMonthlyAvailability = (month: number): number => {
+      const monthAvailData = data.availabilityData.filter(row => {
+        const dateStr = String(row.date || row.일자 || row.생산일자 || '')
+        if (!dateStr) return false
+
+        let rowMonth = null
+        if (dateStr.includes('-')) {
+          rowMonth = parseInt(dateStr.split('-')[1]) || null
+        } else if (dateStr.includes('/')) {
+          const parts = dateStr.split('/')
+          rowMonth = parts[0].length === 4 ? parseInt(parts[1]) : parseInt(parts[0])
+        }
+        return rowMonth === month
+      })
+
+      if (monthAvailData.length === 0) return 100
+
+      let totalOperating = 0
+      let totalScheduled = 0
+      let directRateSum = 0
+      let directRateCount = 0
+
+      monthAvailData.forEach(row => {
+        const process = String(row.공정 || row.process || '').trim()
+        if (!process || process === '합계' || process === 'TOTAL') return
+
+        const directRate = parseNumber(row.시간가동율 || row.가동율 || row.가동률 || row['시간가동율(%)'] || row['가동율(%)'])
+        const operatingTime = parseNumber(row.가동시간 || row['가동시간(분)'] || 0)
+        const scheduledTime = parseNumber(row.조업시간 || row['조업시간(분)'] || 0)
+
+        if (directRate > 0 && directRate <= 100) {
+          directRateSum += directRate
+          directRateCount++
+        } else if (scheduledTime > 0) {
+          totalOperating += operatingTime
+          totalScheduled += scheduledTime
+        }
+      })
+
+      if (directRateCount > 0) {
+        return Math.round((directRateSum / directRateCount) * 10) / 10
+      } else if (totalScheduled > 0) {
+        return Math.round((totalOperating / totalScheduled) * 1000) / 10
+      }
+      return 100
+    }
+
     return Array.from({ length: 12 }, (_, i) => {
       const month = i + 1
       const monthData = data.rawData.filter(row => {
@@ -269,7 +389,8 @@ export default function OverviewDashboard() {
       })
 
       const qualityRate = production > 0 ? (good / production) * 100 : 0
-      const timeAvail = 100
+      // 해당 월의 실제 시간가동율 가져오기
+      const timeAvail = getMonthlyAvailability(month)
       const perfRate = 100
       const oee = (timeAvail * perfRate * qualityRate) / 10000
 
@@ -281,7 +402,7 @@ export default function OverviewDashboard() {
         양품율: Math.round(qualityRate * 10) / 10
       }
     })
-  }, [data.rawData])
+  }, [data.rawData, data.availabilityData])
 
   // 공정 목록
   const processes = useMemo(() => {
