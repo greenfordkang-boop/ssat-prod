@@ -182,31 +182,51 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       }))
   }, [processData])
 
-  // 설비/Line별 현황
+  // 설비/Line별 현황 - 업종별데이터(detailData)의 설비(라인명) 기준
   const equipmentStats = useMemo(() => {
     const equip: Record<string, { production: number; defect: number; time: number }> = {}
 
-    // 디버깅: 첫 번째 데이터의 키 확인
-    if (processData.length > 0) {
-      const firstRow = processData[0]
+    // 업종별데이터에서 현재 공정 필터링
+    const processDetailData = data.detailData.filter(row => {
+      const rowProcess = String(row.공정 || row.공정명 || row.process || '')
+      return rowProcess === processName
+    })
+
+    // 월 필터 적용
+    const filteredDetailData = processDetailData.filter(row => {
+      const dateStr = String(row.생산일자 || row.일자 || row.date || '')
+      if (!dateStr) return true
+      const match = dateStr.match(/\d{4}-(\d{2})-\d{2}/)
+      if (match) {
+        return parseInt(match[1]) === selectedMonth
+      }
+      return true
+    })
+
+    // 디버깅
+    if (filteredDetailData.length > 0) {
+      const firstRow = filteredDetailData[0]
       const keys = Object.keys(firstRow)
-      const equipKeys = keys.filter(k =>
-        k.includes('설비') || k.includes('LINE') || k.includes('Line') || k.includes('라인')
-      )
-      const equipValues = equipKeys.map(k => `${k}="${firstRow[k as keyof typeof firstRow]}"`)
-      console.log(`🏭🏭🏭 [${processName}] 설비필드: ${equipKeys.join(', ')} → 값: ${equipValues.join(', ')} → 결과: ${getEquipmentName(firstRow as Record<string, unknown>)}`)
+      const equipKeys = keys.filter(k => k.includes('설비') || k.includes('라인'))
+      console.log(`🏭 [${processName}] 업종별데이터 설비필드:`, equipKeys.join(', '))
     }
 
-    processData.forEach(row => {
-      const name = getEquipmentName(row as Record<string, unknown>)
+    filteredDetailData.forEach(row => {
+      // 설비(라인명) 필드 우선 사용
+      const name = String(
+        row['설비(라인명)'] || row['설비(라인)명'] || row['설비/LINE'] || row['설비/Line'] ||
+        row['설비명'] || row.LINE || row.Line || '기타'
+      ).trim() || '기타'
+
       const prod = parseNumber(row.생산수량)
       const goodQty = parseNumber(row.양품수량)
       const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+      const time = parseNumber(row['가동시간(분)'] || row['작업시간(분)'] || row.가동시간 || 0)
 
       if (!equip[name]) equip[name] = { production: 0, defect: 0, time: 0 }
       equip[name].production += prod
       equip[name].defect += defectQty > 0 ? defectQty : 0
-      equip[name].time += parseNumber(row['작업시간(분)'])
+      equip[name].time += time
     })
 
     let result = Object.entries(equip)
@@ -236,7 +256,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result
-  }, [processData, equipFilter, equipSort])
+  }, [data.detailData, processName, selectedMonth, equipFilter, equipSort])
 
   // 선택된 설비의 불량 상세 데이터
   const defectDetails = useMemo(() => {
