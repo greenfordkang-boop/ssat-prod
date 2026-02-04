@@ -683,6 +683,38 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       .slice(0, 5)
       .map(([name, value]) => ({ name: name.length > 15 ? name.slice(0, 15) + '...' : name, value }))
 
+    // 일자별 불량 추이
+    const defectByDate: Record<string, number> = {}
+    allData.forEach(row => {
+      const dateStr = String(row.생산일자 || row.작업일자 || '')
+      if (!dateStr) return
+
+      // 날짜에서 일(day) 추출
+      let day = ''
+      if (dateStr.includes('-')) {
+        day = dateStr.split('-')[2] || ''
+      } else if (dateStr.includes('/')) {
+        day = dateStr.split('/')[2] || ''
+      } else if (dateStr.length >= 8) {
+        day = dateStr.substring(6, 8)
+      }
+      if (!day) return
+
+      const dayNum = parseInt(day)
+      if (isNaN(dayNum)) return
+
+      const defectQty = hasDefectTotal
+        ? parseNumber(row['불량합계'] as string | number)
+        : defectTypeKeys.reduce((sum, key) => sum + parseNumber(row[key] as string | number), 0)
+
+      const dayKey = String(dayNum)
+      defectByDate[dayKey] = (defectByDate[dayKey] || 0) + defectQty
+    })
+
+    const dailyTrend = Object.entries(defectByDate)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([day, value]) => ({ day: `${day}일`, value }))
+
     return {
       totalItems: allData.length,
       totalDefect,
@@ -690,7 +722,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       topDefectType: topDefectType[0],
       topDefectValue: topDefectType[1] as number,
       pieData,
-      topParts
+      topParts,
+      dailyTrend
     }
   }, [data.materialDefectData, processName])
 
@@ -1127,7 +1160,31 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
             </div>
           )}
 
-          {/* 차트 영역 */}
+          {/* 일자별 불량 추이 차트 */}
+          {materialDefectStats && materialDefectStats.dailyTrend && materialDefectStats.dailyTrend.length > 0 && (
+            <div className="bg-white rounded-xl p-6 border border-gray-100">
+              <h3 className="text-base font-semibold mb-4">일자별 불량 발생 수량</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={materialDefectStats.dailyTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                  <YAxis tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v) => formatNumber(v as number)} />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    name="불량수량"
+                    stroke={CHART_COLORS.pastel[3]}
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: CHART_COLORS.pastel[3] }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* 차트 영역 (파이차트 + TOP5) */}
           {materialDefectStats && materialDefectStats.pieData.length > 0 && (
             <div className="grid grid-cols-2 gap-6">
               {/* 불량 유형별 파이차트 */}
