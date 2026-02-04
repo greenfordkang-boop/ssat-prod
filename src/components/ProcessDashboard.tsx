@@ -611,95 +611,70 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
     const keys = Object.keys(allData[0] || {})
 
-    // 수량 관련 필드 찾기
+    // 수량 관련 필드 찾기 (동적)
     const findKey = (keywords: string[]) => keys.find(k =>
-      keywords.some(kw => String(k).includes(kw))
+      keywords.some(kw => String(k).toLowerCase().includes(kw.toLowerCase()))
     )
 
-    const qtyKey = findKey(['검사수량', '포장수량', '수량', '생산수량'])
-    const goodKey = findKey(['양품', '합격', '정상'])
-    const defectKey = findKey(['불량', '불합격', 'NG'])
-    const dateKey = findKey(['생산일자', '검사일자', '포장일자', '일자'])
-    const productKey = findKey(['품목명', '부품명', '품명', '제품명'])
-    const workerKey = findKey(['작업자', '검사원', '포장원', '담당자'])
+    const defectKey = findKey(['불량수량', '불량'])
+    const repairKey = findKey(['수리수량', '수리'])
+    const scrapKey = findKey(['폐기수량', '폐기'])
+    const productKey = findKey(['품목명', '부품명', '품명'])
+    const equipKey = findKey(['설비(라인)명', '설비명', '라인명', 'LINE'])
 
     // 총계 계산
-    const totalQty = qtyKey ? allData.reduce((sum, row) => sum + parseNumber(row[qtyKey] as string | number), 0) : 0
-    const totalGood = goodKey ? allData.reduce((sum, row) => sum + parseNumber(row[goodKey] as string | number), 0) : 0
     const totalDefect = defectKey ? allData.reduce((sum, row) => sum + parseNumber(row[defectKey] as string | number), 0) : 0
-    const defectRate = totalQty > 0 ? (totalDefect / totalQty * 100) : 0
+    const totalRepair = repairKey ? allData.reduce((sum, row) => sum + parseNumber(row[repairKey] as string | number), 0) : 0
+    const totalScrap = scrapKey ? allData.reduce((sum, row) => sum + parseNumber(row[scrapKey] as string | number), 0) : 0
+    const repairRate = totalDefect > 0 ? (totalRepair / totalDefect * 100) : 0
 
-    // 일자별 추이
-    const dataByDate: Record<string, { qty: number; defect: number }> = {}
-    allData.forEach(row => {
-      const dateStr = dateKey ? String(row[dateKey] || '') : ''
-      if (!dateStr) return
-
-      let day = ''
-      if (dateStr.includes('-')) day = dateStr.split('-')[2] || ''
-      else if (dateStr.includes('/')) day = dateStr.split('/')[2] || ''
-      else if (dateStr.length >= 8) day = dateStr.substring(6, 8)
-      if (!day) return
-
-      const dayNum = parseInt(day)
-      if (isNaN(dayNum)) return
-
-      const dayKey = String(dayNum)
-      if (!dataByDate[dayKey]) dataByDate[dayKey] = { qty: 0, defect: 0 }
-      dataByDate[dayKey].qty += qtyKey ? parseNumber(row[qtyKey] as string | number) : 0
-      dataByDate[dayKey].defect += defectKey ? parseNumber(row[defectKey] as string | number) : 0
-    })
-
-    const dailyTrend = Object.entries(dataByDate)
-      .sort(([a], [b]) => parseInt(a) - parseInt(b))
-      .map(([day, val]) => ({ day: `${day}일`, qty: val.qty, defect: val.defect }))
-
-    // 작업자별 실적
-    const dataByWorker: Record<string, { qty: number; defect: number }> = {}
-    if (workerKey) {
+    // 설비(라인)별 통계
+    const dataByEquip: Record<string, { defect: number; repair: number; scrap: number }> = {}
+    if (equipKey) {
       allData.forEach(row => {
-        const worker = String(row[workerKey] || '기타')
-        if (!dataByWorker[worker]) dataByWorker[worker] = { qty: 0, defect: 0 }
-        dataByWorker[worker].qty += qtyKey ? parseNumber(row[qtyKey] as string | number) : 0
-        dataByWorker[worker].defect += defectKey ? parseNumber(row[defectKey] as string | number) : 0
+        const equip = String(row[equipKey] || '기타')
+        if (!dataByEquip[equip]) dataByEquip[equip] = { defect: 0, repair: 0, scrap: 0 }
+        dataByEquip[equip].defect += defectKey ? parseNumber(row[defectKey] as string | number) : 0
+        dataByEquip[equip].repair += repairKey ? parseNumber(row[repairKey] as string | number) : 0
+        dataByEquip[equip].scrap += scrapKey ? parseNumber(row[scrapKey] as string | number) : 0
       })
     }
 
-    const topWorkers = Object.entries(dataByWorker)
-      .sort((a, b) => b[1].qty - a[1].qty)
-      .slice(0, 5)
+    const topEquipments = Object.entries(dataByEquip)
+      .sort((a, b) => b[1].defect - a[1].defect)
+      .slice(0, 7)
       .map(([name, val]) => ({
-        name: name.length > 10 ? name.slice(0, 10) + '...' : name,
-        qty: val.qty,
-        defect: val.defect
+        name: name.length > 15 ? name.slice(0, 15) + '...' : name,
+        defect: val.defect,
+        repair: val.repair,
+        scrap: val.scrap
       }))
 
-    // 품목별 실적
+    // 품목별 불량 TOP 5
     const dataByProduct: Record<string, number> = {}
     if (productKey) {
       allData.forEach(row => {
         const product = String(row[productKey] || '기타')
-        const qty = qtyKey ? parseNumber(row[qtyKey] as string | number) : 1
-        dataByProduct[product] = (dataByProduct[product] || 0) + qty
+        const defect = defectKey ? parseNumber(row[defectKey] as string | number) : 0
+        if (defect > 0) {
+          dataByProduct[product] = (dataByProduct[product] || 0) + defect
+        }
       })
     }
 
     const topProducts = Object.entries(dataByProduct)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
-      .map(([name, value]) => ({ name: name.length > 12 ? name.slice(0, 12) + '...' : name, value }))
+      .map(([name, value]) => ({ name: name.length > 15 ? name.slice(0, 15) + '...' : name, value }))
 
     return {
       totalItems: allData.length,
-      totalQty,
-      totalGood,
       totalDefect,
-      defectRate,
-      dailyTrend,
-      topWorkers,
-      topProducts,
-      qtyKey,
-      defectKey
+      totalRepair,
+      totalScrap,
+      repairRate,
+      topEquipments,
+      topProducts
     }
   }, [data.packagingStatusData, processName])
 
@@ -1167,58 +1142,60 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
           {/* 검포장 대시보드 카드 */}
           {packagingStats && (
             <div className="grid grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
-                <div className="text-xs font-semibold text-blue-600 uppercase mb-2">총 검사/포장 수량</div>
-                <div className="text-2xl font-bold text-blue-700">{formatNumber(packagingStats.totalQty)}</div>
-                <div className="text-sm text-blue-500 mt-1">{packagingStats.totalItems}건</div>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-5 border border-red-200">
+                <div className="text-xs font-semibold text-red-600 uppercase mb-2">총 불량 수량</div>
+                <div className="text-2xl font-bold text-red-700">{formatNumber(packagingStats.totalDefect)}</div>
+                <div className="text-sm text-red-500 mt-1">{packagingStats.totalItems}건</div>
               </div>
               <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-5 border border-green-200">
-                <div className="text-xs font-semibold text-green-600 uppercase mb-2">양품 수량</div>
-                <div className="text-2xl font-bold text-green-700">{formatNumber(packagingStats.totalGood)}</div>
+                <div className="text-xs font-semibold text-green-600 uppercase mb-2">수리 수량</div>
+                <div className="text-2xl font-bold text-green-700">{formatNumber(packagingStats.totalRepair)}</div>
                 <div className="text-sm text-green-500 mt-1">
-                  {packagingStats.totalQty > 0 ? ((packagingStats.totalGood / packagingStats.totalQty) * 100).toFixed(1) : 0}%
+                  수리율 {packagingStats.repairRate.toFixed(1)}%
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-5 border border-red-200">
-                <div className="text-xs font-semibold text-red-600 uppercase mb-2">불량 수량</div>
-                <div className="text-2xl font-bold text-red-700">{formatNumber(packagingStats.totalDefect)}</div>
-                <div className="text-sm text-red-500 mt-1">{packagingStats.defectRate.toFixed(2)}%</div>
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-5 border border-orange-200">
+                <div className="text-xs font-semibold text-orange-600 uppercase mb-2">폐기 수량</div>
+                <div className="text-2xl font-bold text-orange-700">{formatNumber(packagingStats.totalScrap)}</div>
+                <div className="text-sm text-orange-500 mt-1">
+                  폐기율 {packagingStats.totalDefect > 0 ? ((packagingStats.totalScrap / packagingStats.totalDefect) * 100).toFixed(1) : 0}%
+                </div>
               </div>
               <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
-                <div className="text-xs font-semibold text-purple-600 uppercase mb-2">건당 평균 수량</div>
+                <div className="text-xs font-semibold text-purple-600 uppercase mb-2">건당 평균 불량</div>
                 <div className="text-2xl font-bold text-purple-700">
-                  {packagingStats.totalItems > 0 ? formatNumber(Math.round(packagingStats.totalQty / packagingStats.totalItems)) : 0}
+                  {packagingStats.totalItems > 0 ? formatNumber(Math.round(packagingStats.totalDefect / packagingStats.totalItems)) : 0}
                 </div>
                 <div className="text-sm text-purple-500 mt-1">개/건</div>
               </div>
             </div>
           )}
 
-          {/* 일자별 추이 차트 */}
-          {packagingStats && packagingStats.dailyTrend.length > 0 && (
-            <div className="bg-white rounded-xl p-6 border border-gray-100">
-              <h3 className="text-base font-semibold mb-4">일자별 검포장 현황</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={packagingStats.dailyTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => formatNumber(v as number)} />
-                  <Line type="monotone" dataKey="qty" name="검사수량" stroke={CHART_COLORS.pastel[0]} strokeWidth={2} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="defect" name="불량수량" stroke={CHART_COLORS.pastel[3]} strokeWidth={2} dot={{ r: 4 }} />
-                  <Legend />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* 차트 영역 (품목별 + 작업자별) */}
-          {packagingStats && (packagingStats.topProducts.length > 0 || packagingStats.topWorkers.length > 0) && (
+          {/* 차트 영역 (설비별 + 품목별) */}
+          {packagingStats && (packagingStats.topEquipments.length > 0 || packagingStats.topProducts.length > 0) && (
             <div className="grid grid-cols-2 gap-6">
-              {/* 품목별 파이차트 */}
+              {/* 설비(라인)별 불량 현황 */}
+              {packagingStats.topEquipments.length > 0 && (
+                <div className="bg-white rounded-xl p-6 border border-gray-100">
+                  <h3 className="text-base font-semibold mb-4">설비(라인)별 불량 현황</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={packagingStats.topEquipments} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis type="number" tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={110} />
+                      <Tooltip formatter={(v) => formatNumber(v as number)} />
+                      <Legend />
+                      <Bar dataKey="defect" name="불량" fill={CHART_COLORS.pastel[3]} radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="repair" name="수리" fill={CHART_COLORS.pastel[1]} radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* 품목별 불량 TOP 5 */}
               {packagingStats.topProducts.length > 0 && (
                 <div className="bg-white rounded-xl p-6 border border-gray-100">
-                  <h3 className="text-base font-semibold mb-4">품목별 분포</h3>
+                  <h3 className="text-base font-semibold mb-4">품목별 불량 TOP 5</h3>
                   <ResponsiveContainer width="100%" height={280}>
                     <PieChart>
                       <Pie
@@ -1239,22 +1216,6 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                       <Tooltip formatter={(v) => formatNumber(v as number)} />
                       <Legend />
                     </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
-              {/* 작업자별 실적 TOP 5 */}
-              {packagingStats.topWorkers.length > 0 && (
-                <div className="bg-white rounded-xl p-6 border border-gray-100">
-                  <h3 className="text-base font-semibold mb-4">작업자별 실적 TOP 5</h3>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={packagingStats.topWorkers} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis type="number" tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
-                      <Tooltip formatter={(v) => formatNumber(v as number)} />
-                      <Bar dataKey="qty" name="검사수량" fill={CHART_COLORS.pastel[0]} radius={[0, 4, 4, 0]} />
-                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               )}
