@@ -91,8 +91,19 @@ export default function DowntimeDashboard() {
   const [showTable, setShowTable] = useState(true)
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'value', direction: 'desc' })
   const [reasonFilter, setReasonFilter] = useState('')
+  const [processFilter, setProcessFilter] = useState('all')
 
-  // 가동율 데이터 필터링
+  // 공정 목록 추출
+  const processList = useMemo(() => {
+    const set = new Set<string>()
+    data.availabilityData.forEach(row => {
+      const process = String(row.공정 || row.process || '')
+      if (process && process !== '합계') set.add(process)
+    })
+    return Array.from(set).sort()
+  }, [data.availabilityData])
+
+  // 가동율 데이터 필터링 (공정 필터 포함)
   const filteredData = useMemo(() => {
     // 디버깅: 데이터 구조 확인
     if (data.availabilityData.length > 0) {
@@ -103,6 +114,13 @@ export default function DowntimeDashboard() {
     }
 
     return data.availabilityData.filter(d => {
+      // 공정 필터
+      if (processFilter !== 'all') {
+        const process = String(d.공정 || d.process || '')
+        if (process !== processFilter) return false
+      }
+
+      // 월 필터
       const dateStr = String(d.date || d.일자 || d.생산일자 || '')
       if (!dateStr) return true
 
@@ -115,7 +133,7 @@ export default function DowntimeDashboard() {
       }
       return !rowMonth || rowMonth === selectedMonth
     })
-  }, [data.availabilityData, selectedMonth])
+  }, [data.availabilityData, selectedMonth, processFilter])
 
   // 비가동 사유별 분석 (컬럼별 비가동 사유 구조 지원)
   const downtimeByReason = useMemo(() => {
@@ -259,6 +277,28 @@ export default function DowntimeDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* 헤더 + 공정 필터 */}
+      <div className="bg-white rounded-xl p-5 border border-slate-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-6 bg-red-500 rounded" />
+            <h2 className="text-xl font-bold text-slate-800">비가동 현황</h2>
+          </div>
+          {processList.length > 0 && (
+            <select
+              value={processFilter}
+              onChange={(e) => setProcessFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm font-medium focus:ring-2 focus:ring-red-500"
+            >
+              <option value="all">✓ 전체 공정</option>
+              {processList.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
       {/* 요약 카드 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl p-6 border border-slate-200">
