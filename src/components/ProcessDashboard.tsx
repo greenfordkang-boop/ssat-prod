@@ -133,28 +133,68 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   // 공정명 변환
   const processName = PROCESS_MAPPING[process as keyof typeof PROCESS_MAPPING] || process
 
-  // 해당 공정 데이터 필터링
+  // 생산실적(rawData) 기반 - UPH 분석용
   const processData = useMemo(() => {
     return getFilteredData().filter(row => row.공정 === processName)
   }, [getFilteredData, processName])
 
-  // 통계 계산
+  // ⭐ 업종별데이터(detailData)에서 해당 공정 + 월 필터링
+  const detailForProcess = useMemo(() => {
+    // 디버깅: 전체 데이터 확인
+    if (data.detailData.length > 0) {
+      const sample = data.detailData[0]
+      const processValues = new Set(data.detailData.map(r => String(r.공정 || r.공정명 || '')))
+      console.log(`📊 업종별데이터 전체: ${data.detailData.length}건, 공정값: ${Array.from(processValues).join(', ')}`)
+    }
+
+    return data.detailData.filter(row => {
+      // 공정 필터링 - 다양한 필드명과 값 지원
+      const rowProcess = String(row.공정 || row.공정명 || row.process || '')
+      if (rowProcess !== processName) return false
+
+      // 월 필터링
+      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || '')
+      if (!dateStr) return true
+
+      let month = 0
+      if (dateStr.includes('-')) {
+        month = parseInt(dateStr.split('-')[1]) || 0
+      } else if (dateStr.includes('/')) {
+        month = parseInt(dateStr.split('/')[1]) || 0
+      } else if (dateStr.length === 8) {
+        month = parseInt(dateStr.substring(4, 6)) || 0
+      }
+
+      return month === 0 || month === selectedMonth
+    })
+  }, [data.detailData, processName, selectedMonth])
+
+  // ⭐ 상단 카드 통계 - 업종별데이터 기반
   const stats = useMemo(() => {
     let production = 0
     let good = 0
     let defect = 0
     let workTime = 0
 
-    processData.forEach(row => {
-      const prod = parseNumber(row.생산수량)
-      const goodQty = parseNumber(row.양품수량)
-      // 불량수량: 명시적 필드가 있으면 사용, 없으면 생산-양품으로 계산
-      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+    console.log(`🏭 [${processName}] 업종별데이터 필터 결과: ${detailForProcess.length}건`)
 
-      production += prod
+    detailForProcess.forEach(row => {
+      const keys = Object.keys(row)
+
+      // 동적으로 필드명 찾기
+      const goodKey = keys.find(k => k.includes('양품') && k.includes('수량'))
+      const defectKey = keys.find(k => k.includes('불량') && k.includes('수량'))
+      const prodKey = keys.find(k => k === '생산수량' || k === '총생산수량')
+      const timeKey = keys.find(k => k.includes('작업시간') || k.includes('가동시간'))
+
+      const goodQty = goodKey ? parseNumber(row[goodKey] as string | number) : 0
+      const defectQty = defectKey ? parseNumber(row[defectKey] as string | number) : 0
+      const prodQty = prodKey ? parseNumber(row[prodKey] as string | number) : (goodQty + defectQty)
+
+      production += prodQty > 0 ? prodQty : (goodQty + defectQty)
       good += goodQty
       defect += defectQty > 0 ? defectQty : 0
-      workTime += parseNumber(row['작업시간(분)'])
+      workTime += timeKey ? parseNumber(row[timeKey] as string | number) : 0
     })
 
     return {
@@ -165,19 +205,25 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       workTime,
       avgUph: workTime > 0 ? Math.round(production / (workTime / 60)) : 0
     }
-  }, [processData])
+  }, [detailForProcess, processName])
 
-  // 일별 추이
+  // 일별 추이 - 업종별데이터 기반
   const dailyTrend = useMemo(() => {
     const daily: Record<string, { production: number; defect: number }> = {}
 
-    processData.forEach(row => {
-      const day = (row.생산일자 || '').split('-')[2] || ''
+    detailForProcess.forEach(row => {
+      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || '')
+      const day = dateStr.includes('-') ? dateStr.split('-')[2] :
+                  dateStr.includes('/') ? dateStr.split('/')[2] : ''
       if (!day) return
 
-      const prod = parseNumber(row.생산수량)
-      const goodQty = parseNumber(row.양품수량)
-      const defectQty = parseNumber(row.불량수량) || (prod - goodQty)
+      const keys = Object.keys(row)
+      const goodKey = keys.find(k => k.includes('양품') && k.includes('수량'))
+      const defectKey = keys.find(k => k.includes('불량') && k.includes('수량'))
+
+      const goodQty = goodKey ? parseNumber(row[goodKey] as string | number) : 0
+      const defectQty = defectKey ? parseNumber(row[defectKey] as string | number) : 0
+      const prod = goodQty + defectQty
 
       if (!daily[day]) daily[day] = { production: 0, defect: 0 }
       daily[day].production += prod
@@ -192,67 +238,39 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         defect: values.defect,
         defectRate: values.production > 0 ? (values.defect / values.production * 100) : 0
       }))
-  }, [processData])
+  }, [detailForProcess])
 
-  // 설비/Line별 현황 - 업종별데이터(detailData) 직접 사용
+  // 설비/Line별 현황 - 업종별데이터(detailData) 기반
   const equipmentStats = useMemo(() => {
     const equip: Record<string, { good: number; defect: number; time: number }> = {}
 
-    // 업종별데이터에서 해당 공정 + 월 필터링
-    const detailForProcess = data.detailData.filter(row => {
-      const rowProcess = String(row.공정 || row.공정명 || row.process || '')
-      if (rowProcess !== processName) return false
-
-      // 월 필터링
-      const dateStr = String(row.생산일자 || row.작업일자 || '')
-      if (!dateStr) return true // 날짜 없으면 포함
-
-      // 다양한 날짜 형식 처리
-      let month = 0
-      if (dateStr.includes('-')) {
-        month = parseInt(dateStr.split('-')[1]) || 0
-      } else if (dateStr.includes('/')) {
-        month = parseInt(dateStr.split('/')[1]) || 0
-      } else if (dateStr.length === 8) {
-        month = parseInt(dateStr.substring(4, 6)) || 0
-      }
-
-      return month === 0 || month === selectedMonth
-    })
-
-    console.log(`🏭 [${processName}] 업종별데이터 건수:`, detailForProcess.length)
-
-    // 디버깅: 첫 번째 row의 모든 키와 값 출력
+    // 디버깅
     if (detailForProcess.length > 0) {
       const sample = detailForProcess[0]
       const keys = Object.keys(sample)
-      console.log(`🔍 [${processName}] 업종별데이터 필드명:`, keys.join(', '))
-      // 수량 관련 필드 찾기
-      const qtyFields = keys.filter(k => k.includes('수량') || k.includes('양품') || k.includes('불량'))
-      console.log(`🔍 [${processName}] 수량 관련 필드:`, qtyFields.map(k => `${k}=${sample[k]}`).join(', '))
+      console.log(`🔍 [${processName}] 필드명:`, keys.slice(0, 10).join(', '))
     }
 
-    // 설비(라인)명 기준으로 직접 집계
+    // 설비(라인)명 기준으로 집계
     detailForProcess.forEach(row => {
-      // 설비명 추출 - 다양한 필드명 지원
+      // 설비명 추출
       let equipName = String(
         row['설비(라인)명'] || row['설비(라인명)'] || row['설비/LINE'] || row['설비/Line'] ||
         row['설비명'] || row.LINE || row.Line || ''
       ).trim()
 
-      // 공정명과 동일하거나 비어있으면 '기타'로 처리
       if (!equipName || equipName === processName) {
         equipName = '기타'
       }
 
-      // 양품수량, 불량수량 - 키 이름에서 동적으로 찾기
       const keys = Object.keys(row)
       const goodKey = keys.find(k => k.includes('양품') && k.includes('수량'))
       const defectKey = keys.find(k => k.includes('불량') && k.includes('수량'))
+      const timeKey = keys.find(k => k.includes('작업시간') || k.includes('가동시간'))
 
       const goodQty = goodKey ? parseNumber(row[goodKey] as string | number) : 0
       const defectQty = defectKey ? parseNumber(row[defectKey] as string | number) : 0
-      const time = parseNumber(row['작업시간(분)'] || row['가동시간(분)'] || 0)
+      const time = timeKey ? parseNumber(row[timeKey] as string | number) : 0
 
       if (!equip[equipName]) equip[equipName] = { good: 0, defect: 0, time: 0 }
       equip[equipName].good += goodQty
@@ -260,7 +278,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       equip[equipName].time += time
     })
 
-    console.log(`🏭 [${processName}] 설비 집계 결과:`, Object.keys(equip).length, '개 설비')
+    console.log(`🏭 [${processName}] 설비 집계: ${Object.keys(equip).length}개`)
 
     let result = Object.entries(equip)
       .map(([name, values]) => {
