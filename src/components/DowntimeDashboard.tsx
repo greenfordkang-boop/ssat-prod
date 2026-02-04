@@ -198,7 +198,7 @@ export default function DowntimeDashboard() {
 
   // 설비별 비가동 분석 (설비/LINE 기준, 비가동유형은 2행 컬럼명 기준)
   const downtimeByEquipment = useMemo(() => {
-    const equipMap = new Map<string, { total: number; downtime: number }>()
+    const equipMap = new Map<string, { total: number; downtime: number; types: Record<string, number> }>()
 
     // 제외할 메타 컬럼 키워드 (비가동 사유가 아닌 컬럼)
     const excludeKeywords = [
@@ -228,24 +228,32 @@ export default function DowntimeDashboard() {
         item['가동시간(분)'] || item.가동시간 || item.operating_minutes || 0
       )) || 0
 
-      // 비가동합계가 있으면 사용, 없으면 각 비가동 사유 컬럼 합산
-      let downtimeTotal = parseFloat(String(item.비가동합계 || 0)) || 0
-
-      if (downtimeTotal === 0) {
-        // 각 비가동 사유 컬럼 합산
-        const keys = Object.keys(item)
-        keys.forEach(key => {
-          const lowerKey = key.toLowerCase()
-          const isExcluded = excludeKeywords.some(ex => lowerKey.includes(ex.toLowerCase()))
-          if (isExcluded) return
-          downtimeTotal += parseFloat(String(item[key as keyof typeof item] || 0)) || 0
-        })
-      }
-
       if (!equipMap.has(equip)) {
-        equipMap.set(equip, { total: 0, downtime: 0 })
+        equipMap.set(equip, { total: 0, downtime: 0, types: {} })
       }
       const current = equipMap.get(equip)!
+
+      // 비가동유형별 시간 집계
+      let downtimeTotal = 0
+      const keys = Object.keys(item)
+      keys.forEach(key => {
+        const lowerKey = key.toLowerCase()
+        const isExcluded = excludeKeywords.some(ex => lowerKey.includes(ex.toLowerCase()))
+        if (isExcluded) return
+        const value = parseFloat(String(item[key as keyof typeof item] || 0)) || 0
+        if (value > 0) {
+          const cleanKey = key.replace(/_\d+$/, '')
+          current.types[cleanKey] = (current.types[cleanKey] || 0) + value
+          downtimeTotal += value
+        }
+      })
+
+      // 비가동합계가 있으면 그 값 사용 (유형별 합산보다 정확할 수 있음)
+      const explicitTotal = parseFloat(String(item.비가동합계 || 0)) || 0
+      if (explicitTotal > 0) {
+        downtimeTotal = explicitTotal
+      }
+
       current.total += operatingTime + downtimeTotal
       current.downtime += downtimeTotal
     })
@@ -256,13 +264,22 @@ export default function DowntimeDashboard() {
         const lowerName = name.toLowerCase()
         return !lowerName.includes('total') && !name.includes('합계') && !name.includes('총계') && !name.includes('전체')
       })
-      .map(([name, data]) => ({
-        name: name.length > 12 ? name.slice(0, 12) + '...' : name,
-        fullName: name,
-        가동시간: Math.round(data.total - data.downtime),
-        비가동시간: Math.round(data.downtime),
-        비가동율: data.total > 0 ? Math.round((data.downtime / data.total) * 1000) / 10 : 0
-      }))
+      .map(([name, data]) => {
+        // TOP3 비가동유형 추출
+        const topTypes = Object.entries(data.types)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 3)
+          .map(([type, value]) => ({ type, value: Math.round(value) }))
+
+        return {
+          name: name.length > 12 ? name.slice(0, 12) + '...' : name,
+          fullName: name,
+          가동시간: Math.round(data.total - data.downtime),
+          비가동시간: Math.round(data.downtime),
+          비가동율: data.total > 0 ? Math.round((data.downtime / data.total) * 1000) / 10 : 0,
+          topTypes
+        }
+      })
       .sort((a, b) => b.비가동시간 - a.비가동시간) // 비가동시간 큰 순으로 정렬
       .slice(0, 15)
   }, [filteredData])
@@ -527,10 +544,10 @@ export default function DowntimeDashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis
                 dataKey="name"
-                tick={{ fontSize: 10 }}
-                angle={0}
-                textAnchor="middle"
-                height={60}
+                tick={{ fontSize: downtimeByEquipment.length > 8 ? 9 : 10 }}
+                angle={downtimeByEquipment.length > 6 ? -45 : 0}
+                textAnchor={downtimeByEquipment.length > 6 ? 'end' : 'middle'}
+                height={downtimeByEquipment.length > 6 ? 80 : 60}
                 interval={0}
               />
               <YAxis
@@ -546,13 +563,40 @@ export default function DowntimeDashboard() {
                 label={{ value: '비가동율(%)', angle: 90, position: 'insideRight', style: { textAnchor: 'middle', fontSize: 11 } }}
               />
               <Tooltip
-                formatter={(value, name) => {
-                  if (name === '비가동율') return [`${(value as number).toFixed(1)}%`, name]
-                  return [formatNumber(value as number) + '분', name]
-                }}
-                labelFormatter={(label) => {
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
                   const item = downtimeByEquipment.find(d => d.name === label)
-                  return item?.fullName || label
+                  if (!item) return null
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-sm">
+                      <div className="font-bold text-slate-800 mb-2 border-b pb-1">{item.fullName}</div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between gap-4">
+                          <span className="text-green-600">가동시간:</span>
+                          <span className="font-medium">{formatNumber(item.가동시간)}분</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-red-600">비가동시간:</span>
+                          <span className="font-medium">{formatNumber(item.비가동시간)}분</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-amber-600">비가동율:</span>
+                          <span className="font-medium">{item.비가동율}%</span>
+                        </div>
+                      </div>
+                      {item.topTypes.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-slate-100">
+                          <div className="text-xs text-slate-500 mb-1">📌 주요 비가동유형</div>
+                          {item.topTypes.map((t, i) => (
+                            <div key={t.type} className="flex justify-between gap-3 text-xs">
+                              <span className="text-slate-600">{i + 1}. {t.type}</span>
+                              <span className="font-medium text-amber-700">{formatNumber(t.value)}분</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
                 }}
               />
               <Legend verticalAlign="top" height={36} />
@@ -658,7 +702,11 @@ export default function DowntimeDashboard() {
                   <th className="px-3 py-2 text-left font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap">설비/LINE</th>
                   <th className="px-3 py-2 text-right font-semibold text-red-600 border-b border-slate-200 whitespace-nowrap bg-red-50">비가동합계</th>
                   {activeDowntimeTypes.map(type => (
-                    <th key={type} className="px-3 py-2 text-right font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap bg-amber-50">
+                    <th
+                      key={type}
+                      className="px-3 py-2 text-right font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap bg-amber-50 cursor-help"
+                      title={type}
+                    >
                       {type.length > 8 ? type.slice(0, 8) + '..' : type}
                     </th>
                   ))}
@@ -687,6 +735,22 @@ export default function DowntimeDashboard() {
                     </tr>
                   ))}
               </tbody>
+              <tfoot className="bg-slate-200 sticky bottom-0">
+                <tr className="font-bold">
+                  <td className="px-3 py-2 text-slate-700 sticky left-0 bg-slate-200" colSpan={3}>합계</td>
+                  <td className="px-3 py-2 text-right text-red-700 tabular-nums bg-red-100">
+                    {formatNumber(Math.round(downtimeDetailByEquipment.reduce((sum, item) => sum + item.total, 0)))}
+                  </td>
+                  {activeDowntimeTypes.map(type => {
+                    const typeTotal = downtimeDetailByEquipment.reduce((sum, item) => sum + (item.types[type] || 0), 0)
+                    return (
+                      <td key={type} className="px-3 py-2 text-right tabular-nums text-amber-800 bg-amber-100">
+                        {typeTotal > 0 ? formatNumber(Math.round(typeTotal)) : '-'}
+                      </td>
+                    )
+                  })}
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
