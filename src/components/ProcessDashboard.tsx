@@ -370,9 +370,9 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         row['라인명'] || row['설비'] || '기타'
       )
 
-      // 품목명 찾기 (다양한 필드명 지원)
+      // 품목명 찾기 (다양한 필드명 지원) - 부품명 우선
       const product = String(
-        row.품목명 || row.품목코드 || row.product || row['품목'] ||
+        row.부품명 || row.품목명 || row.품목코드 || row.product || row['품목'] ||
         row.품명 || row.제품명 || row['제품코드'] || row['제품'] ||
         row.ITEM || row.Item || row.item || row['ITEM_NAME'] || row['ITEM_CODE'] ||
         row.모델 || row.Model || row.model || row['모델명'] ||
@@ -423,9 +423,9 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       .map(row => {
         const standardCT = findCTValue(row, 'standard')
         const actualCT = findCTValue(row, 'actual')
-        // 품목명 찾기 (다양한 필드명 지원)
+        // 품목명 찾기 (다양한 필드명 지원) - 부품명 우선
         const product = String(
-          row.품목명 || row.품목코드 || row.product || row['품목'] ||
+          row.부품명 || row.품목명 || row.품목코드 || row.product || row['품목'] ||
           row.품명 || row.제품명 || row['제품코드'] || row['제품'] ||
           row.ITEM || row.Item || row.item || row['ITEM_NAME'] || row['ITEM_CODE'] ||
           row.모델 || row.Model || row.model || row['모델명'] ||
