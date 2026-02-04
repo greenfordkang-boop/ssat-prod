@@ -14,24 +14,67 @@ const parseExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
   return jsonData as Record<string, unknown>[]
 }
 
-// 가동율 엑셀 파싱 - 2행을 헤더로 사용
+// 가동율 엑셀 파싱 - 2행을 헤더로 사용 (병합 셀 문제 해결)
 const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
   const workbook = XLSX.read(buffer, { type: 'array' })
   const firstSheetName = workbook.SheetNames[0]
   const worksheet = workbook.Sheets[firstSheetName]
 
-  // 2행을 헤더로, 3행부터 데이터로 사용 (range: 1은 2행부터 시작)
-  const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-    defval: '',
-    range: 1  // 2행부터 시작 (0-based index)
-  })
+  // 시트 범위 확인
+  const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
 
-  console.log('📊 가동율 엑셀 파싱 완료 (2행 헤더 사용):', jsonData.length, '건')
-  if (jsonData.length > 0) {
-    console.log('📋 헤더 키:', Object.keys(jsonData[0] as object).slice(0, 10).join(', '), '...')
+  // 2행(index 1)에서 직접 헤더 읽기 (병합 셀 영향 방지)
+  const headers: string[] = []
+  for (let col = range.s.c; col <= range.e.c; col++) {
+    const cellAddress = XLSX.utils.encode_cell({ r: 1, c: col }) // 2행 (0-based index = 1)
+    const cell = worksheet[cellAddress]
+    const value = cell ? String(cell.v || '').trim() : ''
+
+    // 빈 헤더 또는 중복 헤더 처리
+    if (!value) {
+      headers.push(`col_${col}`)
+    } else {
+      let finalHeader = value
+      let count = 1
+      while (headers.includes(finalHeader)) {
+        count++
+        finalHeader = `${value}_${count}`
+      }
+      headers.push(finalHeader)
+    }
   }
 
-  return jsonData as Record<string, unknown>[]
+  console.log('📊 가동율 엑셀 2행 헤더:', headers.slice(0, 15).join(', '), '...')
+
+  // 3행부터 데이터 읽기
+  const data: Record<string, unknown>[] = []
+  for (let row = 2; row <= range.e.r; row++) { // 3행부터 (0-based index = 2)
+    const rowData: Record<string, unknown> = {}
+    let hasData = false
+
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+      const cell = worksheet[cellAddress]
+      const value = cell ? (cell.v !== undefined ? cell.v : '') : ''
+
+      if (headers[col]) {
+        rowData[headers[col]] = value
+        if (value !== '' && value !== 0) hasData = true
+      }
+    }
+
+    // 데이터가 있는 행만 추가
+    if (hasData) {
+      data.push(rowData)
+    }
+  }
+
+  console.log('📊 가동율 엑셀 파싱 완료 (2행 헤더 사용):', data.length, '건')
+  if (data.length > 0) {
+    console.log('📋 첫 데이터 키:', Object.keys(data[0]).slice(0, 15).join(', '), '...')
+  }
+
+  return data
 }
 
 // 아이콘 컴포넌트
