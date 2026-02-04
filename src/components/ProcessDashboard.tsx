@@ -251,6 +251,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       equipment: getEquipmentName(row as Record<string, unknown>),
       product: row.품목명 || '',
       uph: parseNumber(row.UPH),
+      upph: parseNumber(row.UPPH),
       standardCT: parseNumber(row['표준C/T']),
       actualCT: parseNumber(row['실제C/T']),
       ctEfficiency: parseNumber(row['표준C/T']) > 0
@@ -587,6 +588,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                   '설비/Line': r.equipment,
                   품목: r.product,
                   UPH: r.uph,
+                  UPPH: r.upph,
                   표준CT: r.standardCT.toFixed(1),
                   실제CT: r.actualCT.toFixed(1),
                   'CT효율(%)': r.ctEfficiency.toFixed(1)
@@ -613,6 +615,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                     <SortableHeader label="설비/Line" sortKey="equipment" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} />
                     <SortableHeader label="품목" sortKey="product" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} />
                     <SortableHeader label="UPH" sortKey="uph" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} align="right" />
+                    <SortableHeader label="UPPH" sortKey="upph" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} align="right" />
                     <SortableHeader label="표준CT" sortKey="standardCT" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} align="right" />
                     <SortableHeader label="실제CT" sortKey="actualCT" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} align="right" />
                     <SortableHeader label="CT효율" sortKey="ctEfficiency" sortConfig={uphSort} onSort={(k) => handleSort(setUphSort, k, uphSort)} align="right" />
@@ -624,6 +627,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                       <td className="px-4 py-3">{row.equipment}</td>
                       <td className="px-4 py-3 max-w-xs truncate">{row.product}</td>
                       <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(row.uph)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(row.upph)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{row.standardCT.toFixed(1)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{row.actualCT.toFixed(1)}</td>
                       <td className="px-4 py-3 text-right">
