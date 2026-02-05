@@ -45,6 +45,13 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
   const [repairSortConfig, setRepairSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   const [selectedYear, setSelectedYear] = useState('all')
 
+  // 피벗테이블 관련 상태
+  const [pivotDataSource, setPivotDataSource] = useState<'status' | 'repair'>('status')
+  const [pivotRowFields, setPivotRowFields] = useState<string[]>([])
+  const [pivotColFields, setPivotColFields] = useState<string[]>([])
+  const [pivotValueField, setPivotValueField] = useState('')
+  const [pivotAggMethod, setPivotAggMethod] = useState<'count' | 'sum' | 'avg'>('count')
+
   // 금형등급 추출 (A~E)
   const extractGrade = (gradeStr?: string): string => {
     if (!gradeStr) return '미지정'
@@ -403,6 +410,145 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
     if (num >= 100000000) return `${(num / 100000000).toFixed(1)}억`
     if (num >= 10000) return `${(num / 10000).toFixed(0)}만`
     return formatNumber(num)
+  }
+
+  // 피벗 데이터 소스 선택
+  const pivotSourceData = useMemo(() => {
+    return pivotDataSource === 'status' ? moldStatusData : moldRepairData
+  }, [pivotDataSource, moldStatusData, moldRepairData])
+
+  // 피벗 필드 목록 (숫자형/문자형 구분)
+  const pivotFields = useMemo(() => {
+    if (pivotSourceData.length === 0) return { text: [], numeric: [] }
+
+    const sample = pivotSourceData[0]
+    const textFields: string[] = []
+    const numericFields: string[] = []
+
+    Object.entries(sample).forEach(([key, value]) => {
+      if (key === 'id') return
+      if (typeof value === 'number' || (!isNaN(Number(value)) && value !== '' && value !== null)) {
+        numericFields.push(key)
+      }
+      textFields.push(key)
+    })
+
+    return { text: textFields, numeric: numericFields }
+  }, [pivotSourceData])
+
+  // 피벗 테이블 계산
+  const pivotResult = useMemo(() => {
+    if (pivotSourceData.length === 0) return { headers: [], rows: [], totals: {} }
+    if (pivotRowFields.length === 0 && pivotColFields.length === 0) return { headers: [], rows: [], totals: {} }
+
+    // 고유값 추출
+    const getUniqueValues = (field: string) => {
+      const values = new Set<string>()
+      pivotSourceData.forEach(row => {
+        values.add(String(row[field] || '(빈값)'))
+      })
+      return Array.from(values).sort()
+    }
+
+    // 열 헤더 조합 생성
+    const colCombinations: string[][] = []
+    if (pivotColFields.length === 0) {
+      colCombinations.push(['합계'])
+    } else {
+      const colValues = pivotColFields.map(f => getUniqueValues(f))
+      const generateCombinations = (arrays: string[][], current: string[] = []): string[][] => {
+        if (arrays.length === 0) return [current]
+        const [first, ...rest] = arrays
+        return first.flatMap(v => generateCombinations(rest, [...current, v]))
+      }
+      colCombinations.push(...generateCombinations(colValues))
+    }
+
+    // 행 키 생성
+    const getRowKey = (row: Record<string, unknown>) => {
+      return pivotRowFields.map(f => String(row[f] || '(빈값)')).join('|||')
+    }
+
+    // 열 키 생성
+    const getColKey = (row: Record<string, unknown>) => {
+      if (pivotColFields.length === 0) return '합계'
+      return pivotColFields.map(f => String(row[f] || '(빈값)')).join('|||')
+    }
+
+    // 데이터 집계
+    const aggregated: Record<string, Record<string, { sum: number; count: number }>> = {}
+
+    pivotSourceData.forEach(row => {
+      const rowKey = getRowKey(row)
+      const colKey = getColKey(row)
+
+      if (!aggregated[rowKey]) aggregated[rowKey] = {}
+      if (!aggregated[rowKey][colKey]) aggregated[rowKey][colKey] = { sum: 0, count: 0 }
+
+      const value = pivotValueField ? Number(row[pivotValueField]) || 0 : 1
+      aggregated[rowKey][colKey].sum += value
+      aggregated[rowKey][colKey].count += 1
+    })
+
+    // 결과 행 생성
+    const rowKeys = Object.keys(aggregated).sort()
+    const rows = rowKeys.map(rowKey => {
+      const rowParts = rowKey.split('|||')
+      const values: Record<string, number> = {}
+      let rowTotal = 0
+
+      colCombinations.forEach(colCombo => {
+        const colKey = colCombo.join('|||')
+        const cell = aggregated[rowKey]?.[colKey]
+        let val = 0
+        if (cell) {
+          if (pivotAggMethod === 'count') val = cell.count
+          else if (pivotAggMethod === 'sum') val = cell.sum
+          else if (pivotAggMethod === 'avg') val = cell.count > 0 ? cell.sum / cell.count : 0
+        }
+        values[colKey] = val
+        rowTotal += val
+      })
+
+      return { rowParts, values, rowTotal }
+    })
+
+    // 열 합계 계산
+    const colTotals: Record<string, number> = {}
+    let grandTotal = 0
+    colCombinations.forEach(colCombo => {
+      const colKey = colCombo.join('|||')
+      let total = 0
+      rows.forEach(row => {
+        total += row.values[colKey] || 0
+      })
+      colTotals[colKey] = total
+      grandTotal += total
+    })
+
+    return {
+      headers: colCombinations,
+      rows,
+      colTotals,
+      grandTotal
+    }
+  }, [pivotSourceData, pivotRowFields, pivotColFields, pivotValueField, pivotAggMethod])
+
+  // 필드 선택 토글
+  const toggleField = (field: string, type: 'row' | 'col') => {
+    if (type === 'row') {
+      if (pivotRowFields.includes(field)) {
+        setPivotRowFields(pivotRowFields.filter(f => f !== field))
+      } else if (pivotRowFields.length < 3) {
+        setPivotRowFields([...pivotRowFields, field])
+      }
+    } else {
+      if (pivotColFields.includes(field)) {
+        setPivotColFields(pivotColFields.filter(f => f !== field))
+      } else if (pivotColFields.length < 3) {
+        setPivotColFields([...pivotColFields, field])
+      }
+    }
   }
 
   // 현황 탭
@@ -838,6 +984,267 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 데이터조회 탭 (피벗테이블)
+  if (subTab === 'query') {
+    return (
+      <div className="space-y-6">
+        {/* 데이터 소스 선택 */}
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">데이터 소스 선택</h3>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="dataSource"
+                checked={pivotDataSource === 'status'}
+                onChange={() => {
+                  setPivotDataSource('status')
+                  setPivotRowFields([])
+                  setPivotColFields([])
+                  setPivotValueField('')
+                }}
+                className="w-4 h-4 text-blue-600"
+              />
+              <span className="text-sm text-gray-700">금형현황 ({formatNumber(moldStatusData.length)}건)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="dataSource"
+                checked={pivotDataSource === 'repair'}
+                onChange={() => {
+                  setPivotDataSource('repair')
+                  setPivotRowFields([])
+                  setPivotColFields([])
+                  setPivotValueField('')
+                }}
+                className="w-4 h-4 text-blue-600"
+              />
+              <span className="text-sm text-gray-700">수리이력 ({formatNumber(moldRepairData.length)}건)</span>
+            </label>
+          </div>
+        </div>
+
+        {/* 피벗 설정 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 행 필드 선택 */}
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+              행 필드 <span className="text-gray-400 font-normal">({pivotRowFields.length}/3)</span>
+            </h3>
+            <p className="text-xs text-gray-400 mb-3">클릭하여 선택 (최대 3개)</p>
+            <div className="max-h-60 overflow-y-auto space-y-1">
+              {pivotFields.text.map(field => (
+                <button
+                  key={field}
+                  onClick={() => toggleField(field, 'row')}
+                  disabled={!pivotRowFields.includes(field) && pivotRowFields.length >= 3}
+                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
+                    pivotRowFields.includes(field)
+                      ? 'bg-blue-100 text-blue-700 font-medium'
+                      : pivotRowFields.length >= 3
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {pivotRowFields.includes(field) && (
+                    <span className="mr-2 text-blue-500">#{pivotRowFields.indexOf(field) + 1}</span>
+                  )}
+                  {field}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 열 필드 선택 */}
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+              열 필드 <span className="text-gray-400 font-normal">({pivotColFields.length}/3)</span>
+            </h3>
+            <p className="text-xs text-gray-400 mb-3">클릭하여 선택 (최대 3개)</p>
+            <div className="max-h-60 overflow-y-auto space-y-1">
+              {pivotFields.text.map(field => (
+                <button
+                  key={field}
+                  onClick={() => toggleField(field, 'col')}
+                  disabled={!pivotColFields.includes(field) && pivotColFields.length >= 3}
+                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
+                    pivotColFields.includes(field)
+                      ? 'bg-green-100 text-green-700 font-medium'
+                      : pivotColFields.length >= 3
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {pivotColFields.includes(field) && (
+                    <span className="mr-2 text-green-500">#{pivotColFields.indexOf(field) + 1}</span>
+                  )}
+                  {field}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 값 및 집계 방식 */}
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">값 필드 및 집계</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">값 필드</label>
+                <select
+                  value={pivotValueField}
+                  onChange={(e) => setPivotValueField(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">건수만 계산</option>
+                  {pivotFields.numeric.map(field => (
+                    <option key={field} value={field}>{field}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">집계 방식</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPivotAggMethod('count')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pivotAggMethod === 'count'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    건수
+                  </button>
+                  <button
+                    onClick={() => setPivotAggMethod('sum')}
+                    disabled={!pivotValueField}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pivotAggMethod === 'sum'
+                        ? 'bg-blue-500 text-white'
+                        : !pivotValueField
+                          ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    합계
+                  </button>
+                  <button
+                    onClick={() => setPivotAggMethod('avg')}
+                    disabled={!pivotValueField}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pivotAggMethod === 'avg'
+                        ? 'bg-blue-500 text-white'
+                        : !pivotValueField
+                          ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    평균
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setPivotRowFields([])
+                  setPivotColFields([])
+                  setPivotValueField('')
+                  setPivotAggMethod('count')
+                }}
+                className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                초기화
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 피벗 테이블 결과 */}
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-700">
+              피벗 테이블 결과
+              {pivotResult.rows.length > 0 && (
+                <span className="ml-2 text-gray-400 font-normal">({pivotResult.rows.length}행)</span>
+              )}
+            </h3>
+            {pivotRowFields.length === 0 && pivotColFields.length === 0 && (
+              <span className="text-xs text-gray-400">행 또는 열 필드를 선택하세요</span>
+            )}
+          </div>
+
+          {(pivotRowFields.length > 0 || pivotColFields.length > 0) && (
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr>
+                    {pivotRowFields.map((field, idx) => (
+                      <th key={idx} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 border-b border-r border-gray-200 bg-blue-50">
+                        {field}
+                      </th>
+                    ))}
+                    {pivotResult.headers.map((header, idx) => (
+                      <th key={idx} className="px-3 py-2 text-right text-xs font-semibold text-gray-600 border-b border-gray-200 bg-green-50 min-w-[80px]">
+                        {header.join(' / ')}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b border-l border-gray-200 bg-gray-100">
+                      행 합계
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pivotResult.rows.map((row, rowIdx) => (
+                    <tr key={rowIdx} className="hover:bg-gray-50">
+                      {row.rowParts.map((part, partIdx) => (
+                        <td key={partIdx} className="px-3 py-2 text-gray-700 border-b border-r border-gray-100 font-medium bg-blue-50/30">
+                          {part}
+                        </td>
+                      ))}
+                      {pivotResult.headers.map((header, colIdx) => {
+                        const colKey = header.join('|||')
+                        const val = row.values[colKey] || 0
+                        return (
+                          <td key={colIdx} className="px-3 py-2 text-right text-gray-600 border-b border-gray-100">
+                            {pivotAggMethod === 'avg' ? val.toFixed(1) : formatNumber(val)}
+                          </td>
+                        )
+                      })}
+                      <td className="px-3 py-2 text-right font-semibold text-gray-700 border-b border-l border-gray-200 bg-gray-50">
+                        {pivotAggMethod === 'avg' ? row.rowTotal.toFixed(1) : formatNumber(row.rowTotal)}
+                      </td>
+                    </tr>
+                  ))}
+                  {/* 열 합계 행 */}
+                  <tr className="bg-gray-100 font-semibold">
+                    {pivotRowFields.length > 0 && (
+                      <td colSpan={pivotRowFields.length} className="px-3 py-2 text-gray-700 border-t border-r border-gray-200">
+                        열 합계
+                      </td>
+                    )}
+                    {pivotResult.headers.map((header, colIdx) => {
+                      const colKey = header.join('|||')
+                      const val = pivotResult.colTotals?.[colKey] || 0
+                      return (
+                        <td key={colIdx} className="px-3 py-2 text-right text-gray-700 border-t border-gray-200">
+                          {pivotAggMethod === 'avg' ? val.toFixed(1) : formatNumber(val)}
+                        </td>
+                      )
+                    })}
+                    <td className="px-3 py-2 text-right font-bold text-gray-900 border-t border-l border-gray-200 bg-gray-200">
+                      {pivotAggMethod === 'avg'
+                        ? (pivotResult.grandTotal || 0).toFixed(1)
+                        : formatNumber(pivotResult.grandTotal || 0)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     )

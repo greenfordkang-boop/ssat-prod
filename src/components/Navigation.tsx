@@ -267,6 +267,16 @@ export default function Navigation({
               >
                 수리이력
               </button>
+              <button
+                onClick={() => onSubMenuChange('query')}
+                className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
+                  activeSubMenu === 'query'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                }`}
+              >
+                데이터조회
+              </button>
             </div>
           </div>
         </div>
