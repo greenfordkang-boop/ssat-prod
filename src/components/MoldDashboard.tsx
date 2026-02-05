@@ -695,8 +695,8 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
           {/* 월별 수리 추이 */}
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 lg:col-span-2">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">월별 수리 추이 (최근 12개월)</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={monthlyRepairData}>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={monthlyRepairData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
@@ -708,7 +708,9 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
                   ]}
                 />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="count" name="수리 건수" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
+                <Line yAxisId="left" type="monotone" dataKey="count" name="수리 건수" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }}>
+                  <LabelList dataKey="count" position="top" fontSize={10} fill="#3b82f6" formatter={(v) => formatNumber(Number(v) || 0)} />
+                </Line>
                 <Line yAxisId="right" type="monotone" dataKey="cost" name="수리 비용" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -717,16 +719,16 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
           {/* 수리업체별 현황 */}
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">수리업체별 현황</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={vendorData} margin={{ bottom: 80 }}>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={vendorData} margin={{ top: 20, right: 20, left: 0, bottom: 100 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis
                   dataKey="name"
                   tick={{ fontSize: 10 }}
-                  angle={-90}
+                  angle={-45}
                   textAnchor="end"
                   interval={0}
-                  height={80}
+                  height={100}
                 />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(value, name) => [
@@ -744,7 +746,7 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">수리 유형별 현황</h3>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={repairTypeChartData} layout="vertical">
+              <BarChart data={repairTypeChartData} layout="vertical" margin={{ top: 5, right: 50, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={60} />
