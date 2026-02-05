@@ -17,6 +17,7 @@ const mainTabs = [
   { id: 'process', name: '공정현황' },
   { id: 'downtime', name: '비가동현황' },
   { id: 'wip', name: '재공재고' },
+  { id: 'mold', name: '금형현황' },
   { id: 'quality', name: '품질분석' },
   { id: 'pivot', name: '데이터조회' },
   { id: 'upload', name: '파일업로드' }
@@ -235,6 +236,36 @@ export default function Navigation({
                 }`}
               >
                 부품단가표
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mold Sub Navigation */}
+      {activeTab === 'mold' && (
+        <div className="bg-gray-50/80 backdrop-blur-xl border-b border-gray-200/50">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="flex items-center h-11 gap-1">
+              <button
+                onClick={() => onSubMenuChange('status')}
+                className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
+                  activeSubMenu === 'status'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                }`}
+              >
+                금형현황
+              </button>
+              <button
+                onClick={() => onSubMenuChange('repair')}
+                className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 ${
+                  activeSubMenu === 'repair'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                }`}
+              >
+                수리이력
               </button>
             </div>
           </div>

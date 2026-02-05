@@ -13,6 +13,8 @@ import {
   RepairStatusData,
   PackagingStatusData,
   PriceData,
+  MoldStatusData,
+  MoldRepairData,
   FilterState,
   PivotConfig
 } from '@/types'
@@ -48,7 +50,9 @@ const initialData: DashboardData = {
   wipInventoryData: [],
   repairStatusData: [],
   packagingStatusData: [],
-  priceData: []
+  priceData: [],
+  moldStatusData: [],
+  moldRepairData: []
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)

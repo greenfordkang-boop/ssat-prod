@@ -17,7 +17,9 @@ export const TABLE_MAPPING = {
   wipInventoryData: 'wip_inventory_data',
   repairStatusData: 'repair_status_data',
   packagingStatusData: 'packaging_status_data',
-  priceData: 'price_data'
+  priceData: 'price_data',
+  moldStatusData: 'mold_status_data',
+  moldRepairData: 'mold_repair_data'
 } as const
 
 // JSONB로 저장하는 테이블 (모든 테이블 - 컬럼명 문제 해결)
@@ -30,5 +32,7 @@ export const JSONB_TABLES = [
   'wip_inventory_data',
   'repair_status_data',
   'packaging_status_data',
-  'price_data'
+  'price_data',
+  'mold_status_data',
+  'mold_repair_data'
 ]

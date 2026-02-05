@@ -107,6 +107,56 @@ export interface PriceData {
   [key: string]: string | number | undefined
 }
 
+// 금형현황 데이터
+export interface MoldStatusData {
+  id?: number
+  PLANT?: string
+  CODE?: string
+  금형번호?: string
+  고객사명?: string
+  금형구분?: string
+  '품종(MODEL)'?: string
+  부품코드?: string
+  '고객사 P/N'?: string
+  부품명?: string
+  '수주(인수)일자'?: string
+  금형등급?: string
+  CORE재질?: string
+  금형보증SHOT수?: number
+  금형사용SHOT수?: number
+  금형사용율?: number
+  점검주기?: number
+  사용SHOT수?: number
+  '세척/연마율'?: number
+  [key: string]: string | number | undefined
+}
+
+// 금형수리현황 데이터
+export interface MoldRepairData {
+  id?: number
+  금형번호?: string
+  고객사명?: string
+  금형구분?: string
+  '품종(MODEL)'?: string
+  부품코드?: string
+  '고객사 P/N'?: string
+  부품명?: string
+  금형등급?: string
+  금형보증SHOT수?: number
+  금형사용SHOT수?: number
+  점검주기?: number
+  순번?: number
+  구분?: string
+  유형?: string
+  수리일자?: string
+  고객요구일?: string
+  예상수리일?: string
+  수리업체?: string
+  수리금액?: number
+  금형수리내용?: string
+  [key: string]: string | number | undefined
+}
+
 // 전체 데이터 상태
 export interface DashboardData {
   rawData: ProductionData[]
@@ -118,6 +168,8 @@ export interface DashboardData {
   repairStatusData: RepairStatusData[]
   packagingStatusData: PackagingStatusData[]
   priceData: PriceData[]
+  moldStatusData: MoldStatusData[]
+  moldRepairData: MoldRepairData[]
 }
 
 // 필터 상태
@@ -152,3 +204,5 @@ export type DataType =
   | 'repairStatusData'
   | 'packagingStatusData'
   | 'priceData'
+  | 'moldStatusData'
+  | 'moldRepairData'

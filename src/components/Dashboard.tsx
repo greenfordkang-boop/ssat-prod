@@ -10,6 +10,7 @@ import ProcessDashboard from './ProcessDashboard'
 import KeyIssuesBoard from './KeyIssuesBoard'
 import DowntimeDashboard from './DowntimeDashboard'
 import WipDashboard from './WipDashboard'
+import MoldDashboard from './MoldDashboard'
 import QualityDashboard from './QualityDashboard'
 import PivotDashboard from './PivotDashboard'
 import LoginForm from './LoginForm'
@@ -47,6 +48,8 @@ export default function Dashboard() {
       setActiveSubMenu('production')
     } else if (tab === 'wip') {
       setActiveSubMenu('status')
+    } else if (tab === 'mold') {
+      setActiveSubMenu('status')
     }
   }
 
@@ -82,6 +85,7 @@ export default function Dashboard() {
         )}
         {activeTab === 'downtime' && <DowntimeDashboard />}
         {activeTab === 'wip' && <WipDashboard subTab={activeSubMenu} />}
+        {activeTab === 'mold' && <MoldDashboard subTab={activeSubMenu} />}
         {activeTab === 'quality' && <QualityDashboard />}
         {activeTab === 'pivot' && <PivotDashboard />}
         {activeTab === 'upload' && <FileUploadPage />}
