@@ -106,7 +106,7 @@ interface UploadCardConfig {
   borderColor: string
   bgColor: string
   textColor: string
-  dataKey: 'rawData' | 'availabilityData' | 'detailData' | 'ctData' | 'materialDefectData' | 'wipInventoryData' | 'repairStatusData' | 'packagingStatusData' | 'priceData'
+  dataKey: 'rawData' | 'availabilityData' | 'detailData' | 'ctData' | 'materialDefectData' | 'wipInventoryData' | 'repairStatusData' | 'packagingStatusData' | 'priceData' | 'moldStatusData' | 'moldRepairData'
   process?: string // CT 데이터용
 }
 
@@ -377,6 +377,32 @@ export default function FileUploadPage() {
     }
   ]
 
+  // 금형관리 카드 설정
+  const moldCards: UploadCardConfig[] = [
+    {
+      id: 'mold-status',
+      name: '금형현황',
+      description: 'Mold Status',
+      icon: '🔩',
+      color: 'cyan',
+      borderColor: 'hover:border-cyan-300',
+      bgColor: 'bg-cyan-500 hover:bg-cyan-600',
+      textColor: 'text-cyan-600',
+      dataKey: 'moldStatusData'
+    },
+    {
+      id: 'mold-repair',
+      name: '금형수리현황',
+      description: 'Mold Repair History',
+      icon: '🛠️',
+      color: 'lime',
+      borderColor: 'hover:border-lime-300',
+      bgColor: 'bg-lime-500 hover:bg-lime-600',
+      textColor: 'text-lime-600',
+      dataKey: 'moldRepairData'
+    }
+  ]
+
   // 업로드 현황 테이블 데이터
   const statusData = [
     { name: '생산실적', icon: '📊', count: data.rawData.length, color: 'emerald', dataKey: 'rawData' as const },
@@ -389,7 +415,9 @@ export default function FileUploadPage() {
     { name: '창고별재고현황', icon: '🏭', count: data.wipInventoryData.length, color: 'teal', dataKey: 'wipInventoryData' as const },
     { name: '불량수리현황', icon: '🔨', count: data.repairStatusData.length, color: 'indigo', dataKey: 'repairStatusData' as const },
     { name: '검포장현황', icon: '📦', count: data.packagingStatusData.length, color: 'purple', dataKey: 'packagingStatusData' as const },
-    { name: '부품단가표', icon: '💰', count: data.priceData.length, color: 'amber', dataKey: 'priceData' as const }
+    { name: '부품단가표', icon: '💰', count: data.priceData.length, color: 'amber', dataKey: 'priceData' as const },
+    { name: '금형현황', icon: '🔩', count: data.moldStatusData.length, color: 'cyan', dataKey: 'moldStatusData' as const },
+    { name: '금형수리현황', icon: '🛠️', count: data.moldRepairData.length, color: 'lime', dataKey: 'moldRepairData' as const }
   ]
 
   // 업로드 카드 렌더링
@@ -526,6 +554,21 @@ export default function FileUploadPage() {
             card.dataKey === 'wipInventoryData' ? data.wipInventoryData.length :
             card.dataKey === 'repairStatusData' ? data.repairStatusData.length :
             data.packagingStatusData.length
+          ))}
+        </div>
+
+        {/* 금형관리 데이터 섹션 */}
+        <div className="mb-5 mt-8">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center text-lg">🔩</div>
+            <h3 className="font-bold text-slate-700">금형관리 데이터</h3>
+            <span className="text-xs text-slate-400 ml-2">금형현황, 수리이력</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {moldCards.map(card => renderUploadCard(card,
+            card.dataKey === 'moldStatusData' ? data.moldStatusData.length :
+            data.moldRepairData.length
           ))}
         </div>
       </div>
