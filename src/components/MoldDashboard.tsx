@@ -15,7 +15,8 @@ import {
   Cell,
   Legend,
   LineChart,
-  Line
+  Line,
+  LabelList
 } from 'recharts'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
@@ -38,6 +39,11 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedGrade, setSelectedGrade] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [isTableExpanded, setIsTableExpanded] = useState(false)
+  const [isRepairTableExpanded, setIsRepairTableExpanded] = useState(false)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+  const [repairSortConfig, setRepairSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+  const [selectedYear, setSelectedYear] = useState('all')
 
   // 금형등급 추출 (A~E)
   const extractGrade = (gradeStr?: string): string => {
@@ -46,10 +52,32 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
     return match ? match[1] : '미지정'
   }
 
+  // 년도 추출
+  const extractYear = (dateStr?: string): string => {
+    if (!dateStr) return ''
+    const match = dateStr.match(/(\d{4})/)
+    return match ? match[1] : ''
+  }
+
+  // 수리이력에서 년도 목록 추출
+  const yearList = useMemo(() => {
+    const years = new Set<string>()
+    moldRepairData.forEach(r => {
+      const year = extractYear(r.수리일자 as string)
+      if (year) years.add(year)
+    })
+    return Array.from(years).sort((a, b) => b.localeCompare(a))
+  }, [moldRepairData])
+
+  // 년도별 필터링된 수리 데이터
+  const yearFilteredRepairData = useMemo(() => {
+    if (selectedYear === 'all') return moldRepairData
+    return moldRepairData.filter(r => extractYear(r.수리일자 as string) === selectedYear)
+  }, [moldRepairData, selectedYear])
+
   // 요약 통계
   const summary = useMemo(() => {
     const totalMolds = moldStatusData.length
-    const totalRepairs = moldRepairData.length
 
     // 등급별 현황
     const gradeCount: Record<string, number> = {}
@@ -65,18 +93,6 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
       categoryCount[cat] = (categoryCount[cat] || 0) + 1
     })
 
-    // 수리 유형별 현황
-    const repairTypeCount: Record<string, number> = {}
-    moldRepairData.forEach(r => {
-      const type = (r.유형 as string) || '기타'
-      repairTypeCount[type] = (repairTypeCount[type] || 0) + 1
-    })
-
-    // 총 수리 비용
-    const totalRepairCost = moldRepairData.reduce((sum, r) => {
-      return sum + (Number(r.수리금액) || 0)
-    }, 0)
-
     // 평균 금형사용율
     const avgUsageRate = moldStatusData.length > 0
       ? moldStatusData.reduce((sum, m) => sum + (Number(m.금형사용율) || 0), 0) / moldStatusData.length
@@ -85,17 +101,47 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
     // 점검 필요 금형 (세척/연마율 80% 이상)
     const needsInspection = moldStatusData.filter(m => (Number(m['세척/연마율']) || 0) >= 80).length
 
+    // 총 수리 건수 (전체 기준)
+    const totalRepairs = moldRepairData.length
+
     return {
       totalMolds,
-      totalRepairs,
       gradeCount,
       categoryCount,
-      repairTypeCount,
-      totalRepairCost,
       avgUsageRate,
-      needsInspection
+      needsInspection,
+      totalRepairs
     }
   }, [moldStatusData, moldRepairData])
+
+  // 수리 요약 통계 (년도 필터 적용)
+  const repairSummary = useMemo(() => {
+    const totalRepairs = yearFilteredRepairData.length
+
+    // 수리 유형별 현황
+    const repairTypeCount: Record<string, number> = {}
+    yearFilteredRepairData.forEach(r => {
+      const type = (r.유형 as string) || '기타'
+      repairTypeCount[type] = (repairTypeCount[type] || 0) + 1
+    })
+
+    // 총 수리 비용
+    const totalRepairCost = yearFilteredRepairData.reduce((sum, r) => {
+      return sum + (Number(r.수리금액) || 0)
+    }, 0)
+
+    // 자체/외주 수리 건수
+    const selfRepairCount = yearFilteredRepairData.filter(r => r.구분 === '자체').length
+    const outsourceRepairCount = yearFilteredRepairData.filter(r => r.구분 === '외주').length
+
+    return {
+      totalRepairs,
+      repairTypeCount,
+      totalRepairCost,
+      selfRepairCount,
+      outsourceRepairCount
+    }
+  }, [yearFilteredRepairData])
 
   // 등급별 차트 데이터
   const gradeChartData = useMemo(() => {
@@ -111,18 +157,18 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
       .sort((a, b) => b.value - a.value)
   }, [summary.categoryCount])
 
-  // 수리 유형별 차트 데이터
+  // 수리 유형별 차트 데이터 (년도 필터 적용)
   const repairTypeChartData = useMemo(() => {
-    return Object.entries(summary.repairTypeCount)
+    return Object.entries(repairSummary.repairTypeCount)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-  }, [summary.repairTypeCount])
+  }, [repairSummary.repairTypeCount])
 
-  // 월별 수리 추이
+  // 월별 수리 추이 (년도 필터 적용)
   const monthlyRepairData = useMemo(() => {
     const monthlyCount: Record<string, { count: number; cost: number }> = {}
 
-    moldRepairData.forEach(r => {
+    yearFilteredRepairData.forEach(r => {
       const dateStr = r.수리일자 as string
       if (!dateStr) return
       const match = dateStr.match(/(\d{4})-(\d{2})/)
@@ -139,39 +185,186 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
     return Object.entries(monthlyCount)
       .map(([month, data]) => ({ month, ...data }))
       .sort((a, b) => a.month.localeCompare(b.month))
-      .slice(-12) // 최근 12개월
-  }, [moldRepairData])
+  }, [yearFilteredRepairData])
 
   // 필터링된 금형 목록
   const filteredMolds = useMemo(() => {
-    return moldStatusData.filter(m => {
+    let filtered = moldStatusData.filter(m => {
       const matchSearch = !searchTerm ||
         (m.금형번호 as string)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.부품명 as string)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m['품종(MODEL)'] as string)?.toLowerCase().includes(searchTerm.toLowerCase())
+        (m['품종(MODEL)'] as string)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.고객사명 as string)?.toLowerCase().includes(searchTerm.toLowerCase())
 
       const matchGrade = selectedGrade === 'all' || extractGrade(m.금형등급 as string) === selectedGrade
       const matchCategory = selectedCategory === 'all' || m.금형구분 === selectedCategory
 
       return matchSearch && matchGrade && matchCategory
     })
-  }, [moldStatusData, searchTerm, selectedGrade, selectedCategory])
 
-  // 필터링된 수리이력
+    // 정렬 적용
+    if (sortConfig) {
+      filtered = [...filtered].sort((a, b) => {
+        let aVal: string | number = ''
+        let bVal: string | number = ''
+
+        switch (sortConfig.key) {
+          case '금형번호':
+            aVal = (a.금형번호 as string) || ''
+            bVal = (b.금형번호 as string) || ''
+            break
+          case '고객사명':
+            aVal = (a.고객사명 as string) || ''
+            bVal = (b.고객사명 as string) || ''
+            break
+          case '부품명':
+            aVal = (a.부품명 as string) || ''
+            bVal = (b.부품명 as string) || ''
+            break
+          case '품종':
+            aVal = (a['품종(MODEL)'] as string) || ''
+            bVal = (b['품종(MODEL)'] as string) || ''
+            break
+          case '구분':
+            aVal = (a.금형구분 as string) || ''
+            bVal = (b.금형구분 as string) || ''
+            break
+          case '등급':
+            aVal = extractGrade(a.금형등급 as string)
+            bVal = extractGrade(b.금형등급 as string)
+            break
+          case '보증SHOT':
+            aVal = Number(a.금형보증SHOT수) || 0
+            bVal = Number(b.금형보증SHOT수) || 0
+            break
+          case '사용SHOT':
+            aVal = Number(a.금형사용SHOT수) || 0
+            bVal = Number(b.금형사용SHOT수) || 0
+            break
+          case '사용율':
+            aVal = Number(a.금형사용율) || 0
+            bVal = Number(b.금형사용율) || 0
+            break
+          case '세척연마율':
+            aVal = Number(a['세척/연마율']) || 0
+            bVal = Number(b['세척/연마율']) || 0
+            break
+        }
+
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
+        }
+        return sortConfig.direction === 'asc'
+          ? String(aVal).localeCompare(String(bVal))
+          : String(bVal).localeCompare(String(aVal))
+      })
+    }
+
+    return filtered
+  }, [moldStatusData, searchTerm, selectedGrade, selectedCategory, sortConfig])
+
+  // 정렬 핸들러
+  const handleSort = (key: string) => {
+    setSortConfig(prev => {
+      if (prev?.key === key) {
+        return prev.direction === 'asc' ? { key, direction: 'desc' } : null
+      }
+      return { key, direction: 'asc' }
+    })
+  }
+
+  // 정렬 아이콘
+  const SortIcon = ({ columnKey }: { columnKey: string }) => {
+    if (sortConfig?.key !== columnKey) {
+      return <span className="ml-1 text-gray-300">↕</span>
+    }
+    return <span className="ml-1 text-blue-500">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+  }
+
+  // 필터링된 수리이력 (년도 필터 + 정렬 적용)
   const filteredRepairs = useMemo(() => {
-    return moldRepairData.filter(r => {
+    let filtered = yearFilteredRepairData.filter(r => {
       const matchSearch = !searchTerm ||
         (r.금형번호 as string)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (r.부품명 as string)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (r.금형수리내용 as string)?.toLowerCase().includes(searchTerm.toLowerCase())
 
       return matchSearch
-    }).sort((a, b) => {
-      const dateA = a.수리일자 as string || ''
-      const dateB = b.수리일자 as string || ''
-      return dateB.localeCompare(dateA)
     })
-  }, [moldRepairData, searchTerm])
+
+    // 정렬 적용
+    if (repairSortConfig) {
+      filtered = [...filtered].sort((a, b) => {
+        let aVal: string | number = ''
+        let bVal: string | number = ''
+
+        switch (repairSortConfig.key) {
+          case '수리일자':
+            aVal = (a.수리일자 as string) || ''
+            bVal = (b.수리일자 as string) || ''
+            break
+          case '금형번호':
+            aVal = (a.금형번호 as string) || ''
+            bVal = (b.금형번호 as string) || ''
+            break
+          case '부품명':
+            aVal = (a.부품명 as string) || ''
+            bVal = (b.부품명 as string) || ''
+            break
+          case '구분':
+            aVal = (a.구분 as string) || ''
+            bVal = (b.구분 as string) || ''
+            break
+          case '유형':
+            aVal = (a.유형 as string) || ''
+            bVal = (b.유형 as string) || ''
+            break
+          case '수리업체':
+            aVal = (a.수리업체 as string) || ''
+            bVal = (b.수리업체 as string) || ''
+            break
+          case '수리금액':
+            aVal = Number(a.수리금액) || 0
+            bVal = Number(b.수리금액) || 0
+            break
+        }
+
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return repairSortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
+        }
+        return repairSortConfig.direction === 'asc'
+          ? String(aVal).localeCompare(String(bVal))
+          : String(bVal).localeCompare(String(aVal))
+      })
+    } else {
+      // 기본 정렬: 수리일자 내림차순
+      filtered = [...filtered].sort((a, b) => {
+        const dateA = a.수리일자 as string || ''
+        const dateB = b.수리일자 as string || ''
+        return dateB.localeCompare(dateA)
+      })
+    }
+
+    return filtered
+  }, [yearFilteredRepairData, searchTerm, repairSortConfig])
+
+  // 수리이력 정렬 핸들러
+  const handleRepairSort = (key: string) => {
+    setRepairSortConfig(prev => {
+      if (prev?.key === key) {
+        return prev.direction === 'asc' ? { key, direction: 'desc' } : null
+      }
+      return { key, direction: 'asc' }
+    })
+  }
+
+  // 수리이력 정렬 아이콘
+  const RepairSortIcon = ({ columnKey }: { columnKey: string }) => {
+    if (repairSortConfig?.key !== columnKey) {
+      return <span className="ml-1 text-gray-300">↕</span>
+    }
+    return <span className="ml-1 text-blue-500">{repairSortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+  }
 
   // 고객사별 금형 현황
   const customerData = useMemo(() => {
@@ -186,10 +379,10 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
       .slice(0, 10)
   }, [moldStatusData])
 
-  // 수리업체별 현황
+  // 수리업체별 현황 (년도 필터 적용)
   const vendorData = useMemo(() => {
     const vendorCount: Record<string, { count: number; cost: number }> = {}
-    moldRepairData.forEach(r => {
+    yearFilteredRepairData.forEach(r => {
       const vendor = (r.수리업체 as string) || '미지정'
       if (!vendorCount[vendor]) {
         vendorCount[vendor] = { count: 0, cost: 0 }
@@ -200,7 +393,7 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
     return Object.entries(vendorCount)
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.count - a.count)
-  }, [moldRepairData])
+  }, [yearFilteredRepairData])
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('ko-KR').format(num)
@@ -255,6 +448,7 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
                   {gradeChartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={GRADE_COLORS[entry.grade] || COLORS[index % COLORS.length]} />
                   ))}
+                  <LabelList dataKey="value" position="right" fontSize={11} fill="#374151" formatter={(v) => formatNumber(Number(v) || 0)} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -286,13 +480,22 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
           {/* 고객사별 금형 현황 */}
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">고객사별 금형 현황 (Top 10)</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={customerData}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={customerData} margin={{ bottom: 80 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 10 }}
+                  angle={-90}
+                  textAnchor="end"
+                  interval={0}
+                  height={80}
+                />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(value) => [formatNumber(Number(value) || 0), '금형 수']} />
-                <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey="value" position="top" fontSize={10} fill="#374151" formatter={(v) => formatNumber(Number(v) || 0)} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -324,14 +527,23 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
         {/* 금형 목록 테이블 */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-700">금형 목록</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-gray-700">금형 목록</h3>
+              <span className="text-xs text-gray-400">({formatNumber(filteredMolds.length)}건)</span>
+              <button
+                onClick={() => setIsTableExpanded(!isTableExpanded)}
+                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors"
+              >
+                {isTableExpanded ? '접기 ▲' : '펼치기 ▼'}
+              </button>
+            </div>
             <div className="flex items-center gap-3">
               <input
                 type="text"
-                placeholder="금형번호, 부품명, 품종 검색..."
+                placeholder="금형번호, 부품명, 품종, 고객사 검색..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
               />
               <select
                 value={selectedGrade}
@@ -355,29 +567,51 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
               </select>
             </div>
           </div>
-          <div className="overflow-x-auto max-h-96">
+          <div className={`overflow-x-auto ${isTableExpanded ? 'max-h-[600px]' : 'max-h-80'} transition-all duration-300`}>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 sticky top-0">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">금형번호</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">부품명</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">품종</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">구분</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">등급</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">보증SHOT</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">사용SHOT</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">사용율</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">세척/연마율</th>
+                  <th onClick={() => handleSort('금형번호')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    금형번호<SortIcon columnKey="금형번호" />
+                  </th>
+                  <th onClick={() => handleSort('고객사명')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    고객사<SortIcon columnKey="고객사명" />
+                  </th>
+                  <th onClick={() => handleSort('부품명')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    부품명<SortIcon columnKey="부품명" />
+                  </th>
+                  <th onClick={() => handleSort('품종')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    품종<SortIcon columnKey="품종" />
+                  </th>
+                  <th onClick={() => handleSort('구분')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    구분<SortIcon columnKey="구분" />
+                  </th>
+                  <th onClick={() => handleSort('등급')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    등급<SortIcon columnKey="등급" />
+                  </th>
+                  <th onClick={() => handleSort('보증SHOT')} className="px-3 py-2 text-right text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    보증SHOT<SortIcon columnKey="보증SHOT" />
+                  </th>
+                  <th onClick={() => handleSort('사용SHOT')} className="px-3 py-2 text-right text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    사용SHOT<SortIcon columnKey="사용SHOT" />
+                  </th>
+                  <th onClick={() => handleSort('사용율')} className="px-3 py-2 text-right text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    사용율<SortIcon columnKey="사용율" />
+                  </th>
+                  <th onClick={() => handleSort('세척연마율')} className="px-3 py-2 text-right text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    세척/연마율<SortIcon columnKey="세척연마율" />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredMolds.slice(0, 100).map((m, idx) => {
+                {filteredMolds.map((m, idx) => {
                   const grade = extractGrade(m.금형등급 as string)
                   const cleanRate = Number(m['세척/연마율']) || 0
                   return (
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium text-gray-900">{m.금형번호}</td>
-                      <td className="px-3 py-2 text-gray-600 max-w-[200px] truncate">{m.부품명}</td>
+                      <td className="px-3 py-2 text-gray-600">{m.고객사명}</td>
+                      <td className="px-3 py-2 text-gray-600 max-w-[180px] truncate" title={m.부품명 as string}>{m.부품명}</td>
                       <td className="px-3 py-2 text-gray-600">{m['품종(MODEL)']}</td>
                       <td className="px-3 py-2 text-gray-600">{m.금형구분}</td>
                       <td className="px-3 py-2">
@@ -402,11 +636,6 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
                 })}
               </tbody>
             </table>
-            {filteredMolds.length > 100 && (
-              <p className="text-center text-sm text-gray-400 py-3">
-                {filteredMolds.length}건 중 100건만 표시됩니다.
-              </p>
-            )}
           </div>
         </div>
       </div>
@@ -417,26 +646,46 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
   if (subTab === 'repair') {
     return (
       <div className="space-y-6">
+        {/* 년도 필터 */}
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-gray-600">조회 년도:</span>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="all">전체</option>
+            {yearList.map(year => (
+              <option key={year} value={year}>{year}년</option>
+            ))}
+          </select>
+          {selectedYear !== 'all' && (
+            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+              {selectedYear}년 데이터만 표시중
+            </span>
+          )}
+        </div>
+
         {/* 요약 카드 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <p className="text-sm text-gray-500 mb-1">총 수리 건수</p>
-            <p className="text-2xl font-bold text-gray-900">{formatNumber(summary.totalRepairs)}</p>
+            <p className="text-2xl font-bold text-gray-900">{formatNumber(repairSummary.totalRepairs)}</p>
           </div>
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <p className="text-sm text-gray-500 mb-1">총 수리 비용</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(summary.totalRepairCost)}원</p>
+            <p className="text-2xl font-bold text-blue-600">{formatCurrency(repairSummary.totalRepairCost)}원</p>
           </div>
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <p className="text-sm text-gray-500 mb-1">자체 수리</p>
             <p className="text-2xl font-bold text-green-600">
-              {formatNumber(moldRepairData.filter(r => r.구분 === '자체').length)}
+              {formatNumber(repairSummary.selfRepairCount)}
             </p>
           </div>
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <p className="text-sm text-gray-500 mb-1">외주 수리</p>
             <p className="text-2xl font-bold text-amber-600">
-              {formatNumber(moldRepairData.filter(r => r.구분 === '외주').length)}
+              {formatNumber(repairSummary.outsourceRepairCount)}
             </p>
           </div>
         </div>
@@ -468,16 +717,25 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
           {/* 수리업체별 현황 */}
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">수리업체별 현황</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={vendorData}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={vendorData} margin={{ bottom: 80 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 10 }}
+                  angle={-90}
+                  textAnchor="end"
+                  interval={0}
+                  height={80}
+                />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(value, name) => [
                   name === 'count' ? formatNumber(Number(value) || 0) + '건' : formatCurrency(Number(value) || 0) + '원',
                   name === 'count' ? '수리 건수' : '수리 비용'
                 ]} />
-                <Bar dataKey="count" fill="#3b82f6" name="수리 건수" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="#3b82f6" name="수리 건수" radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey="count" position="top" fontSize={10} fill="#374151" formatter={(v) => formatNumber(Number(v) || 0)} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -491,7 +749,9 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={60} />
                 <Tooltip formatter={(value) => [formatNumber(Number(value) || 0), '건수']} />
-                <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]}>
+                  <LabelList dataKey="value" position="right" fontSize={11} fill="#374151" formatter={(v) => formatNumber(Number(v) || 0)} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -500,7 +760,16 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
         {/* 수리이력 테이블 */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-700">수리이력</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-gray-700">수리이력</h3>
+              <span className="text-xs text-gray-400">({formatNumber(filteredRepairs.length)}건)</span>
+              <button
+                onClick={() => setIsRepairTableExpanded(!isRepairTableExpanded)}
+                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors"
+              >
+                {isRepairTableExpanded ? '접기 ▲' : '펼치기 ▼'}
+              </button>
+            </div>
             <input
               type="text"
               placeholder="금형번호, 부품명, 수리내용 검색..."
@@ -509,26 +778,40 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
               className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-72"
             />
           </div>
-          <div className="overflow-x-auto max-h-96">
+          <div className={`overflow-x-auto ${isRepairTableExpanded ? 'max-h-[600px]' : 'max-h-80'} transition-all duration-300`}>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 sticky top-0">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">수리일자</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">금형번호</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">부품명</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">구분</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">유형</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">수리업체</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">수리금액</th>
+                  <th onClick={() => handleRepairSort('수리일자')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    수리일자<RepairSortIcon columnKey="수리일자" />
+                  </th>
+                  <th onClick={() => handleRepairSort('금형번호')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    금형번호<RepairSortIcon columnKey="금형번호" />
+                  </th>
+                  <th onClick={() => handleRepairSort('부품명')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    부품명<RepairSortIcon columnKey="부품명" />
+                  </th>
+                  <th onClick={() => handleRepairSort('구분')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    구분<RepairSortIcon columnKey="구분" />
+                  </th>
+                  <th onClick={() => handleRepairSort('유형')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    유형<RepairSortIcon columnKey="유형" />
+                  </th>
+                  <th onClick={() => handleRepairSort('수리업체')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    수리업체<RepairSortIcon columnKey="수리업체" />
+                  </th>
+                  <th onClick={() => handleRepairSort('수리금액')} className="px-3 py-2 text-right text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-100 select-none">
+                    수리금액<RepairSortIcon columnKey="수리금액" />
+                  </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">수리내용</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredRepairs.slice(0, 100).map((r, idx) => (
+                {filteredRepairs.map((r, idx) => (
                   <tr key={idx} className="hover:bg-gray-50">
                     <td className="px-3 py-2 text-gray-600">{r.수리일자}</td>
                     <td className="px-3 py-2 font-medium text-gray-900">{r.금형번호}</td>
-                    <td className="px-3 py-2 text-gray-600 max-w-[150px] truncate">{r.부품명}</td>
+                    <td className="px-3 py-2 text-gray-600 max-w-[150px] truncate" title={r.부품명 as string}>{r.부품명}</td>
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                         r.구분 === '자체' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
@@ -552,11 +835,6 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
                 ))}
               </tbody>
             </table>
-            {filteredRepairs.length > 100 && (
-              <p className="text-center text-sm text-gray-400 py-3">
-                {filteredRepairs.length}건 중 100건만 표시됩니다.
-              </p>
-            )}
           </div>
         </div>
       </div>
