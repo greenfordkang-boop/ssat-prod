@@ -1035,7 +1035,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                     <tr className="bg-slate-50">
                       <SortableHeader label="설비/Line" sortKey="name" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} />
                       <SortableHeader label="생산수량" sortKey="production" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
-                      <SortableHeader label="불량수량" sortKey="defect" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
+                      <SortableHeader label="불량수량 🔍" sortKey="defect" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
                       <SortableHeader label="불량율" sortKey="defectRate" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
                       <SortableHeader label="UPH" sortKey="uph" sortConfig={equipSort} onSort={(k) => handleSort(setEquipSort, k, equipSort)} align="right" />
                     </tr>
@@ -1187,7 +1187,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                     <SortableHeader label="품목" sortKey="product" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} />
                     <SortableHeader label="표준CT" sortKey="standardCT" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} align="right" />
                     <SortableHeader label="실제CT" sortKey="actualCT" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} align="right" />
-                    <SortableHeader label="CT효율" sortKey="efficiency" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} align="right" />
+                    <SortableHeader label="CT효율 🔍" sortKey="efficiency" sortConfig={ctSort} onSort={(k) => handleSort(setCtSort, k, ctSort)} align="right" />
                   </tr>
                 </thead>
                 <tbody>
@@ -1621,9 +1621,9 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                                       setSelectedMaterialRow(row as Record<string, unknown>)
                                       setMaterialDetailModalOpen(true)
                                     }}
-                                    className="font-bold text-red-600 hover:text-red-800 hover:underline cursor-pointer"
+                                    className="font-bold text-red-600 hover:text-red-800 hover:underline cursor-pointer inline-flex items-center gap-1"
                                   >
-                                    {formatNumber(numVal)}
+                                    {formatNumber(numVal)} <span className="text-xs">🔍</span>
                                   </button>
                                 </td>
                               )

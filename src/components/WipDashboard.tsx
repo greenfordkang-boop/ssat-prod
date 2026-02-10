@@ -829,6 +829,7 @@ export default function WipDashboard({ subTab }: WipDashboardProps) {
               <h3 className="text-base font-semibold flex items-center gap-2">
                 재고 상세
                 <span className="text-sm font-normal text-slate-400">({filteredInventory.length}건)</span>
+                <span className="text-xs font-normal text-blue-500 ml-1">🔍 행 클릭 → 창고별 상세</span>
               </h3>
               <div className="flex items-center gap-3">
                 {/* 분산 품목 필터 토글 */}

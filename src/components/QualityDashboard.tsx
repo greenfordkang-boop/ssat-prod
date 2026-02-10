@@ -521,7 +521,7 @@ export default function QualityDashboard() {
                   <SortableHeader label="공정" sortKey="process" sortConfig={sortConfig} onSort={handleSort} align="center" />
                   <SortableHeader label="생산수량" sortKey="production" sortConfig={sortConfig} onSort={handleSort} align="center" />
                   <SortableHeader label="양품수량" sortKey="good" sortConfig={sortConfig} onSort={handleSort} align="center" />
-                  <SortableHeader label="불량수량" sortKey="defect" sortConfig={sortConfig} onSort={handleSort} align="center" />
+                  <SortableHeader label="불량수량 🔍" sortKey="defect" sortConfig={sortConfig} onSort={handleSort} align="center" />
                   <SortableHeader label="불량금액" sortKey="defectAmount" sortConfig={sortConfig} onSort={handleSort} align="center" />
                   <SortableHeader label="불량율" sortKey="defectRate" sortConfig={sortConfig} onSort={handleSort} align="center" />
                   <SortableHeader label="수율" sortKey="yieldRate" sortConfig={sortConfig} onSort={handleSort} align="center" />

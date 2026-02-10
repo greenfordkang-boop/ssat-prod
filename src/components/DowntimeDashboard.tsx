@@ -425,7 +425,7 @@ export default function DowntimeDashboard() {
                     className="px-4 py-3 text-right font-semibold text-red-600 cursor-pointer hover:bg-slate-100 bg-red-50"
                     onClick={() => handleSort('비가동시간')}
                   >
-                    비가동시간 {sortConfig?.key === '비가동시간' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    비가동시간 🔍 {sortConfig?.key === '비가동시간' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
                   <th
                     className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100"

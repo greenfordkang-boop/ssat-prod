@@ -821,7 +821,7 @@ export default function KeyIssuesBoard() {
                     <div
                       key={issue.id}
                       onClick={() => openDetailModal(issue)}
-                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow group ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -834,8 +834,9 @@ export default function KeyIssuesBoard() {
                           {issue.currentValue.toFixed(1)}%
                         </span>
                       </div>
-                      <div className="text-xs mt-1 opacity-75">
-                        {issue.detail}
+                      <div className="text-xs mt-1 opacity-75 flex items-center justify-between">
+                        <span>{issue.detail}</span>
+                        <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">🔍 상세보기</span>
                       </div>
                     </div>
                   ))}
@@ -861,7 +862,7 @@ export default function KeyIssuesBoard() {
                     <div
                       key={issue.id}
                       onClick={() => openDetailModal(issue)}
-                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow group ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -874,8 +875,9 @@ export default function KeyIssuesBoard() {
                           +{issue.currentValue.toFixed(1)}%
                         </span>
                       </div>
-                      <div className="text-xs mt-1 opacity-75">
-                        {issue.detail}
+                      <div className="text-xs mt-1 opacity-75 flex items-center justify-between">
+                        <span>{issue.detail}</span>
+                        <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">🔍 상세보기</span>
                       </div>
                     </div>
                   ))}
@@ -917,7 +919,7 @@ export default function KeyIssuesBoard() {
                     <div
                       key={issue.id}
                       onClick={() => openDetailModal(issue)}
-                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow group ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -930,8 +932,9 @@ export default function KeyIssuesBoard() {
                           {issue.currentValue.toFixed(1)}%
                         </span>
                       </div>
-                      <div className="text-xs mt-1 opacity-75">
-                        {issue.detail}
+                      <div className="text-xs mt-1 opacity-75 flex items-center justify-between">
+                        <span>{issue.detail}</span>
+                        <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">🔍 상세보기</span>
                       </div>
                     </div>
                   ))}
@@ -957,7 +960,7 @@ export default function KeyIssuesBoard() {
                     <div
                       key={issue.id}
                       onClick={() => openDetailModal(issue)}
-                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow group ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -968,11 +971,10 @@ export default function KeyIssuesBoard() {
                           {issue.currentValue.toLocaleString()}개
                         </span>
                       </div>
-                      {issue.detail && (
-                        <div className="text-xs mt-1 opacity-75">
-                          {issue.detail}
-                        </div>
-                      )}
+                      <div className="text-xs mt-1 opacity-75 flex items-center justify-between">
+                        <span>{issue.detail || ''}</span>
+                        <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">🔍 상세보기</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -997,7 +999,7 @@ export default function KeyIssuesBoard() {
                     <div
                       key={issue.id}
                       onClick={() => openDetailModal(issue)}
-                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${getSeverityStyle(issue.severity)}`}
+                      className={`p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow group ${getSeverityStyle(issue.severity)}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -1008,8 +1010,9 @@ export default function KeyIssuesBoard() {
                           {issue.currentValue.toLocaleString()}개
                         </span>
                       </div>
-                      <div className="text-xs mt-1 opacity-75">
-                        {issue.detail}
+                      <div className="text-xs mt-1 opacity-75 flex items-center justify-between">
+                        <span>{issue.detail}</span>
+                        <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">🔍 상세보기</span>
                       </div>
                     </div>
                   ))}
