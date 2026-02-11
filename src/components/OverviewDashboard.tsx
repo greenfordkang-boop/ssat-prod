@@ -309,7 +309,10 @@ export default function OverviewDashboard() {
 
   // 사출설비별 설비가동율 = 가동시간(분) / 보유시간(분) × 100
   const injectionEquipUtil = useMemo(() => {
-    // 선택된 월에 맞는 사출 가동율 데이터 필터링
+    const capacityHours = MONTHLY_HOURS[selectedMonth - 1]
+    const equipMap = new Map<string, number>()
+
+    // 1차: availabilityData에서 사출 데이터 필터링
     const filtered = data.availabilityData.filter(row => {
       const process = String(row.공정 || row.process || '').trim()
       if (process !== '사출') return false
@@ -318,21 +321,35 @@ export default function OverviewDashboard() {
       return !rowMonth || rowMonth === selectedMonth
     })
 
-    // 설비별 가동시간 합산
-    const equipMap = new Map<string, number>()
-    filtered.forEach(row => {
-      const equip = String(
-        row['설비/LINE'] || row['설비(라인)명'] || row.LINE ||
-        row.설비명 || row.설비 || row.라인명 || '기타'
-      ).trim()
-      if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
-
-      const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
-      equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
-    })
+    if (filtered.length > 0) {
+      // availabilityData 사용
+      filtered.forEach(row => {
+        const equip = String(
+          row['설비/LINE'] || row['설비(라인)명'] || row.LINE ||
+          row.설비명 || row.설비 || row.라인명 || '기타'
+        ).trim()
+        if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
+        const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
+        equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
+      })
+    } else {
+      // 2차: rawData(생산실적)에서 사출 데이터 fallback
+      const rawFiltered = data.rawData.filter(row => {
+        const process = String(row.공정 || '').trim()
+        if (process !== '사출') return false
+        const dateStr = String(row.생산일자 || '')
+        const rowMonth = extractMonthFromDate(dateStr)
+        return rowMonth === selectedMonth
+      })
+      rawFiltered.forEach(row => {
+        const equip = String(row['설비(라인)명'] || '기타').trim()
+        if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
+        const operatingMin = parseNumber(row['작업시간(분)'] || 0)
+        equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
+      })
+    }
 
     // 설비별 가동율 계산
-    const capacityHours = MONTHLY_HOURS[selectedMonth - 1]
     const result = Array.from(equipMap.entries())
       .map(([name, totalMin]) => ({
         설비: name,
@@ -343,7 +360,7 @@ export default function OverviewDashboard() {
       .sort((a, b) => b.설비가동율 - a.설비가동율)
 
     return result
-  }, [data.availabilityData, selectedMonth, monthlyCapacityMin])
+  }, [data.availabilityData, data.rawData, selectedMonth, monthlyCapacityMin])
 
   // 사출설비 평균 설비가동율 (선택된 월)
   const avgEquipUtil = useMemo(() => {
@@ -360,32 +377,52 @@ export default function OverviewDashboard() {
       return process === '사출'
     })
 
+    // 사출 생산실적 데이터 (fallback용)
+    const injectionRaw = data.rawData.filter(row => {
+      const process = String(row.공정 || '').trim()
+      return process === '사출'
+    })
+
     return Array.from({ length: 12 }, (_, i) => {
       const month = i + 1
       const capMin = MONTHLY_HOURS[i] * 60
+      const equipMap = new Map<string, number>()
 
-      // 해당 월 데이터 필터링
-      const monthData = injectionAvail.filter(row => {
+      // 1차: availabilityData에서 해당 월 데이터
+      const monthAvailData = injectionAvail.filter(row => {
         const dateStr = String(row.date || row.일자 || row.생산일자 || row.날짜 || row.Date || row.DATE || '')
         const rowMonth = extractMonthFromDate(dateStr)
         return rowMonth === month
       })
 
-      if (monthData.length === 0) {
-        return { month: `${month}월`, 설비가동율: 0, 보유시간: MONTHLY_HOURS[i], 대수: 0 }
+      if (monthAvailData.length > 0) {
+        monthAvailData.forEach(row => {
+          const equip = String(
+            row['설비/LINE'] || row['설비(라인)명'] || row.LINE ||
+            row.설비명 || row.설비 || row.라인명 || '기타'
+          ).trim()
+          if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
+          const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
+          equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
+        })
+      } else {
+        // 2차: rawData(생산실적) fallback
+        const monthRawData = injectionRaw.filter(row => {
+          const dateStr = String(row.생산일자 || '')
+          const rowMonth = extractMonthFromDate(dateStr)
+          return rowMonth === month
+        })
+        monthRawData.forEach(row => {
+          const equip = String(row['설비(라인)명'] || '기타').trim()
+          if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
+          const operatingMin = parseNumber(row['작업시간(분)'] || 0)
+          equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
+        })
       }
 
-      // 설비별 가동시간 합산
-      const equipMap = new Map<string, number>()
-      monthData.forEach(row => {
-        const equip = String(
-          row['설비/LINE'] || row['설비(라인)명'] || row.LINE ||
-          row.설비명 || row.설비 || row.라인명 || '기타'
-        ).trim()
-        if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
-        const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
-        equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
-      })
+      if (equipMap.size === 0) {
+        return { month: `${month}월`, 설비가동율: 0, 보유시간: MONTHLY_HOURS[i], 대수: 0 }
+      }
 
       // 설비별 가동율 → 평균
       const rates = Array.from(equipMap.values()).map(totalMin =>
@@ -397,7 +434,7 @@ export default function OverviewDashboard() {
 
       return { month: `${month}월`, 설비가동율: avg, 보유시간: MONTHLY_HOURS[i], 대수: equipMap.size }
     })
-  }, [data.availabilityData])
+  }, [data.availabilityData, data.rawData])
 
   // OEE 요약 통계 (테이블 데이터 기반)
   const oeeStats = useMemo(() => {
