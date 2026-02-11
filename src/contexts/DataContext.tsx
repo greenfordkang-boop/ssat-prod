@@ -60,7 +60,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined)
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [data, setData] = useState<DashboardData>(initialData)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [filters, setFilters] = useState<FilterState>({ process: 'all', equipment: 'all', product: 'all' })
@@ -433,8 +433,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // 이미 로딩 중이거나 이미 로드한 경우 스킵
     if (!user || isLoadingRef.current || hasLoadedRef.current) {
-      // 이미 로드 완료 상태면 loading false 보장
-      if (hasLoadedRef.current) setLoading(false)
       return
     }
 
@@ -442,7 +440,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // 다시 한번 확인 (비동기 환경에서의 race condition 방지)
       if (isLoadingRef.current || hasLoadedRef.current) {
         console.log('⏭️ 이미 로딩 중이거나 로드 완료됨 - 스킵')
-        if (hasLoadedRef.current) setLoading(false)
         return
       }
 
