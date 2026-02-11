@@ -342,9 +342,17 @@ export default function OverviewDashboard() {
         return rowMonth === selectedMonth
       })
       rawFiltered.forEach(row => {
-        const equip = String(row['설비(라인)명'] || '기타').trim()
+        // 설비명: 다양한 필드명 지원 (ProcessDashboard와 동일)
+        const equip = String(
+          row['설비(라인)명'] || row['설비(라인명)'] || row['설비/LINE'] || row['설비/Line'] ||
+          row['설비명'] || row.LINE || row.Line || row['라인명'] ||
+          row['설비(라인)코드'] || row['설비코드'] || '기타'
+        ).trim()
         if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
-        const operatingMin = parseNumber(row['작업시간(분)'] || 0)
+        // 작업시간: 동적 키 검색
+        const keys = Object.keys(row)
+        const timeKey = keys.find(k => k.includes('작업시간') || k.includes('가동시간'))
+        const operatingMin = parseNumber(timeKey ? row[timeKey] : 0)
         equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
       })
     }
@@ -413,9 +421,15 @@ export default function OverviewDashboard() {
           return rowMonth === month
         })
         monthRawData.forEach(row => {
-          const equip = String(row['설비(라인)명'] || '기타').trim()
+          const equip = String(
+            row['설비(라인)명'] || row['설비(라인명)'] || row['설비/LINE'] || row['설비/Line'] ||
+            row['설비명'] || row.LINE || row.Line || row['라인명'] ||
+            row['설비(라인)코드'] || row['설비코드'] || '기타'
+          ).trim()
           if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
-          const operatingMin = parseNumber(row['작업시간(분)'] || 0)
+          const keys = Object.keys(row)
+          const timeKey = keys.find(k => k.includes('작업시간') || k.includes('가동시간'))
+          const operatingMin = parseNumber(timeKey ? row[timeKey] : 0)
           equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
         })
       }
