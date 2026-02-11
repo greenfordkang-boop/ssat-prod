@@ -64,31 +64,30 @@ export default function Dashboard() {
         onSubMenuChange={setActiveSubMenu}
       />
 
-      {/* Loading Overlay */}
-      {dataLoading && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 flex items-center justify-center">
-          <div className="bg-white rounded-xl p-6 shadow-xl">
-            <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3" />
-            <p className="text-slate-600">데이터 로딩 중...</p>
-          </div>
-        </div>
-      )}
-
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-6">
-        {activeTab === 'overview' && <OverviewDashboard />}
-        {activeTab === 'process' && activeProcess === 'key-issues' && (
+        {/* 인라인 로딩 — 네비게이션은 항상 조작 가능 */}
+        {dataLoading && (
+          <div className="flex items-center justify-center py-24">
+            <div className="bg-white rounded-xl p-6 shadow-xl text-center">
+              <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3" />
+              <p className="text-slate-600">데이터 로딩 중...</p>
+            </div>
+          </div>
+        )}
+        {!dataLoading && activeTab === 'overview' && <OverviewDashboard />}
+        {!dataLoading && activeTab === 'process' && activeProcess === 'key-issues' && (
           <KeyIssuesBoard />
         )}
-        {activeTab === 'process' && activeProcess && activeProcess !== 'key-issues' && (
+        {!dataLoading && activeTab === 'process' && activeProcess && activeProcess !== 'key-issues' && (
           <ProcessDashboard process={activeProcess} subMenu={activeSubMenu} />
         )}
-        {activeTab === 'downtime' && <DowntimeDashboard />}
-        {activeTab === 'wip' && <WipDashboard subTab={activeSubMenu} />}
-        {activeTab === 'mold' && <MoldDashboard subTab={activeSubMenu} />}
-        {activeTab === 'quality' && <QualityDashboard />}
-        {activeTab === 'pivot' && <PivotDashboard />}
-        {activeTab === 'upload' && <FileUploadPage />}
+        {!dataLoading && activeTab === 'downtime' && <DowntimeDashboard />}
+        {!dataLoading && activeTab === 'wip' && <WipDashboard subTab={activeSubMenu} />}
+        {!dataLoading && activeTab === 'mold' && <MoldDashboard subTab={activeSubMenu} />}
+        {!dataLoading && activeTab === 'quality' && <QualityDashboard />}
+        {!dataLoading && activeTab === 'pivot' && <PivotDashboard />}
+        {!dataLoading && activeTab === 'upload' && <FileUploadPage />}
       </main>
     </div>
   )
