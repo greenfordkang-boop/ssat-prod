@@ -137,10 +137,45 @@ const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
   URL.revokeObjectURL(url)
 }
 
+// 2026년 대한민국 공휴일 (평일에 해당하는 날만)
+const HOLIDAYS_2026: string[] = [
+  '2026-01-01', // 신정
+  '2026-02-16', '2026-02-17', '2026-02-18', // 설날
+  '2026-03-02', // 삼일절 대체공휴일 (3/1 일요일)
+  '2026-05-05', // 어린이날
+  '2026-05-24', // 부처님오신날
+  '2026-06-06', // 현충일
+  '2026-08-15', // 광복절
+  '2026-10-03', // 개천절
+  '2026-10-05', '2026-10-06', '2026-10-07', // 추석+대체
+  '2026-10-09', // 한글날
+  '2026-12-25', // 크리스마스
+]
+
+// 월별 법정휴무일수 계산 (토+일+공휴일, 중복 제거)
+function getMonthlyHolidayDays(year: number, month: number): number {
+  const daysInMonth = new Date(year, month, 0).getDate()
+  let holidayDays = 0
+  const holidaySet = new Set(
+    HOLIDAYS_2026.filter(d => parseInt(d.split('-')[1]) === month)
+      .map(d => parseInt(d.split('-')[2]))
+  )
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month - 1, day)
+    const dow = date.getDay() // 0=Sun, 6=Sat
+    if (dow === 0 || dow === 6 || holidaySet.has(day)) {
+      holidayDays++
+    }
+  }
+  return holidayDays
+}
+
 export default function OverviewDashboard() {
   const { data, selectedMonth, setSelectedMonth, getFilteredData } = useData()
   const filteredData = getFilteredData()
   const [showDetailTable, setShowDetailTable] = useState(true)
+  const [showEquipDetail, setShowEquipDetail] = useState(false)
   const [processFilter, setProcessFilter] = useState('all')
   const [sortField, setSortField] = useState<string>('종합효율(OEE)')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
@@ -383,7 +418,57 @@ export default function OverviewDashboard() {
     return Math.round((sum / injectionEquipUtil.length) * 10) / 10
   }, [injectionEquipUtil])
 
-  // 월별 사출 설비가동율 추이 (1~12월)
+  // 설비명에서 톤수 추출 (예: "SS-350T", "LSM220", "180톤" → 350, 220, 180)
+  const extractTonnage = (name: string): number | null => {
+    // 패턴: 숫자 + T/t/톤 (예: 350T, 220t, 180톤)
+    const withUnit = name.match(/(\d{2,4})\s*[Tt톤]/)
+    if (withUnit) return parseInt(withUnit[1])
+    // 패턴: 하이픈/공백 뒤 숫자 (예: SS-350, LSM 220)
+    const afterSep = name.match(/[-\s](\d{2,4})(?!\d)/)
+    if (afterSep) return parseInt(afterSep[1])
+    // 패턴: 문자 바로 뒤 숫자 (예: LSM220, DH180)
+    const afterChar = name.match(/[A-Za-z가-힣](\d{2,4})(?!\d)/)
+    if (afterChar) return parseInt(afterChar[1])
+    return null
+  }
+
+  // 톤수별 CAPA 여유 분석
+  const tonnageCapaAnalysis = useMemo(() => {
+    if (injectionEquipUtil.length === 0) return []
+
+    // 설비별 톤수 추출 & 그룹핑
+    const tonnageGroups = new Map<number, { machines: string[]; utils: number[] }>()
+
+    injectionEquipUtil.forEach(eq => {
+      const ton = extractTonnage(eq.설비)
+      if (ton === null) return
+      if (!tonnageGroups.has(ton)) {
+        tonnageGroups.set(ton, { machines: [], utils: [] })
+      }
+      const g = tonnageGroups.get(ton)!
+      g.machines.push(eq.설비)
+      g.utils.push(eq.설비가동율)
+    })
+
+    return Array.from(tonnageGroups.entries())
+      .map(([ton, g]) => {
+        const avgUtil = g.utils.reduce((a, b) => a + b, 0) / g.utils.length
+        const totalMachines = g.machines.length
+        // 여유 CAPA = (100 - 평균가동율) / 100 × 대수 → 몇 대분 여유
+        const spareMachines = ((100 - avgUtil) / 100) * totalMachines
+        return {
+          톤수: ton,
+          대수: totalMachines,
+          평균가동율: Math.round(avgUtil * 10) / 10,
+          여유대수: Math.round(spareMachines * 10) / 10,
+          여유율: Math.round((100 - avgUtil) * 10) / 10,
+          설비목록: g.machines
+        }
+      })
+      .sort((a, b) => a.톤수 - b.톤수)
+  }, [injectionEquipUtil])
+
+  // 월별 사출 설비가동율 추이 (1~12월) - 3단 적층 막대 (시간 기준)
   const monthlyEquipUtil = useMemo(() => {
     // 사출 가동율 데이터만 추출
     const injectionAvail = data.availabilityData.filter(row => {
@@ -393,7 +478,8 @@ export default function OverviewDashboard() {
 
     return Array.from({ length: 12 }, (_, i) => {
       const month = i + 1
-      const capMin = MONTHLY_HOURS[i] * 60
+      const totalHours = MONTHLY_HOURS[i]
+      const capMin = totalHours * 60
       let equipMap = new Map<string, number>()
 
       // 1차: availabilityData에서 해당 월 데이터
@@ -426,19 +512,43 @@ export default function OverviewDashboard() {
         Array.from(equipMap.entries()).filter(([name]) => name !== '기타' || equipMap.size === 1)
       )
 
+      // 법정휴무 시간 계산
+      const holidayDays = getMonthlyHolidayDays(2026, month)
+      const holidayHours = Math.round(holidayDays * 24 * 10) / 10
+
       if (finalMap.size === 0) {
-        return { month: `${month}월`, 설비가동율: 0, 보유시간: MONTHLY_HOURS[i], 대수: 0 }
+        return {
+          month: `${month}월`,
+          실제가동: 0,
+          비가동: Math.round((totalHours - holidayHours) * 10) / 10,
+          법정휴무: holidayHours,
+          보유시간: totalHours,
+          가동율: 0,
+          대수: 0
+        }
       }
 
       // 설비별 가동율 → 평균
       const rates = Array.from(finalMap.values()).map(totalMin =>
         (totalMin / capMin) * 100
       )
-      const avg = rates.length > 0
+      const avgRate = rates.length > 0
         ? Math.round((rates.reduce((a, b) => a + b, 0) / rates.length) * 10) / 10
         : 0
 
-      return { month: `${month}월`, 설비가동율: avg, 보유시간: MONTHLY_HOURS[i], 대수: finalMap.size }
+      // 시간 기준 분배 (총 보유시간 = 실제가동 + 비가동 + 법정휴무)
+      const operatingHours = Math.round((avgRate / 100) * totalHours * 10) / 10
+      const nonOperatingHours = Math.max(0, Math.round((totalHours - operatingHours - holidayHours) * 10) / 10)
+
+      return {
+        month: `${month}월`,
+        실제가동: operatingHours,
+        비가동: nonOperatingHours,
+        법정휴무: holidayHours,
+        보유시간: totalHours,
+        가동율: avgRate,
+        대수: finalMap.size
+      }
     })
   }, [data.availabilityData, data.rawData])
 
@@ -690,84 +800,218 @@ export default function OverviewDashboard() {
         </div>
       </div>
 
-      {/* 월별 사출 설비가동율 추이 */}
+      {/* 월별 사출 설비가동율 추이 (3단 적층 막대) */}
       <div className="bg-white rounded-xl p-6 border border-slate-200">
         <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
           <span className="w-1 h-5 bg-emerald-500 rounded-full" />
           월별 사출 설비가동율 추이
         </h3>
-        <ResponsiveContainer width="100%" height={340}>
-          <ComposedChart data={monthlyEquipUtil} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={380}>
+          <ComposedChart data={monthlyEquipUtil} margin={{ top: 30, right: 60, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-            <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+            <YAxis yAxisId="left" tickFormatter={(v) => `${v}h`} />
+            <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
             <Tooltip
               content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null
                 const d = payload[0].payload
+                const operatingPct = d.보유시간 > 0 ? ((d.실제가동 / d.보유시간) * 100).toFixed(1) : '0.0'
+                const nonOpPct = d.보유시간 > 0 ? ((d.비가동 / d.보유시간) * 100).toFixed(1) : '0.0'
+                const holidayPct = d.보유시간 > 0 ? ((d.법정휴무 / d.보유시간) * 100).toFixed(1) : '0.0'
                 return (
-                  <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg text-xs">
-                    <div className="font-bold text-slate-700 mb-1">{label}</div>
-                    <div className="text-emerald-600">설비가동율: {d.설비가동율.toFixed(1)}%</div>
-                    <div className="text-slate-500">보유시간: {d.보유시간}h/대 · {d.대수}대</div>
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xl text-xs min-w-[200px]">
+                    <div className="font-bold text-slate-800 text-sm mb-2 pb-2 border-b border-slate-100">{label}</div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />
+                          <span className="text-slate-600">실제가동</span>
+                        </span>
+                        <span className="font-semibold text-emerald-700">{d.실제가동.toFixed(1)}h ({operatingPct}%)</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block" />
+                          <span className="text-slate-600">비가동</span>
+                        </span>
+                        <span className="font-semibold text-amber-700">{d.비가동.toFixed(1)}h ({nonOpPct}%)</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-slate-300 inline-block" />
+                          <span className="text-slate-600">법정휴무</span>
+                        </span>
+                        <span className="font-semibold text-slate-500">{d.법정휴무.toFixed(1)}h ({holidayPct}%)</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between">
+                      <span className="text-slate-400">보유시간</span>
+                      <span className="font-bold text-slate-700">{d.보유시간}h/대 · {d.대수}대</span>
+                    </div>
+                    <div className="mt-1 flex justify-between">
+                      <span className="text-slate-400">설비가동율</span>
+                      <span className="font-black text-emerald-600 text-sm">{d.가동율.toFixed(1)}%</span>
+                    </div>
                   </div>
                 )
               }}
             />
-            <Bar dataKey="설비가동율" fill="#6ee7b7" radius={[4, 4, 0, 0]}>
-              <LabelList dataKey="설비가동율" position="top" fill="#059669" fontSize={10} fontWeight="bold" formatter={(v) => (v as number) > 0 ? `${(v as number).toFixed(1)}%` : ''} />
-            </Bar>
-            <Line type="monotone" dataKey="설비가동율" stroke="#059669" strokeWidth={2} dot={{ r: 4, fill: '#059669' }} />
+            <Legend />
+            <Bar yAxisId="left" dataKey="실제가동" stackId="a" fill="#34d399" />
+            <Bar yAxisId="left" dataKey="비가동" stackId="a" fill="#fbbf24" />
+            <Bar yAxisId="left" dataKey="법정휴무" stackId="a" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+            <Line yAxisId="right" type="monotone" dataKey="가동율" stroke="#059669" strokeWidth={2.5} dot={{ r: 4, fill: '#059669', strokeWidth: 2, stroke: '#fff' }}>
+              <LabelList dataKey="가동율" position="top" fill="#059669" fontSize={10} fontWeight="bold" formatter={(v) => (v as number) > 0 ? `${(v as number).toFixed(1)}%` : ''} />
+            </Line>
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
-      {/* 사출기별 설비가동율 (선택월 상세) */}
-      {injectionEquipUtil.length > 0 && (
+      {/* 톤수별 CAPA 여유 분석 */}
+      {tonnageCapaAnalysis.length > 0 && (
         <div className="bg-white rounded-xl p-6 border border-slate-200">
           <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-            <span className="w-1 h-5 bg-emerald-500 rounded-full" />
-            사출기별 설비가동율 ({selectedMonth}월, 보유시간 {MONTHLY_HOURS[selectedMonth - 1]}h/대)
+            <span className="w-1 h-5 bg-amber-500 rounded-full" />
+            톤수별 CAPA 여유 ({selectedMonth}월)
           </h3>
-          <ResponsiveContainer width="100%" height={Math.max(300, injectionEquipUtil.length * 40)}>
-            <BarChart
-              data={injectionEquipUtil}
-              layout="vertical"
-              margin={{ top: 10, right: 60, left: 20, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-              <YAxis
-                type="category"
-                dataKey="설비"
-                width={140}
-                tick={{ fontSize: 11 }}
-              />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null
-                  const d = payload[0].payload
-                  return (
-                    <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg text-xs">
-                      <div className="font-bold text-slate-700 mb-1">{label}</div>
-                      <div className="text-emerald-600">설비가동율: {d.설비가동율.toFixed(1)}%</div>
-                      <div className="text-slate-500">가동시간: {d.가동시간.toFixed(1)}h / {d.보유시간}h</div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+            {tonnageCapaAnalysis.map(t => {
+              const isOk = t.여유대수 >= 1
+              const isWarning = t.여유대수 >= 0.5 && t.여유대수 < 1
+              const bgColor = isOk ? 'from-emerald-50 to-emerald-100 border-emerald-200' : isWarning ? 'from-amber-50 to-amber-100 border-amber-200' : 'from-red-50 to-red-100 border-red-200'
+              const textColor = isOk ? 'text-emerald-700' : isWarning ? 'text-amber-700' : 'text-red-700'
+              const badgeColor = isOk ? 'bg-emerald-100 text-emerald-700' : isWarning ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+              return (
+                <div key={t.톤수} className={`bg-gradient-to-br ${bgColor} rounded-xl p-4 border`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-lg font-black text-slate-800">{t.톤수}T</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badgeColor}`}>
+                      {t.대수}대
+                    </span>
+                  </div>
+                  <div className="mb-2">
+                    <div className="flex justify-between text-xs text-slate-500 mb-1">
+                      <span>가동율</span>
+                      <span>{t.평균가동율}%</span>
                     </div>
-                  )
-                }}
-              />
-              <Bar dataKey="설비가동율" fill="#34d399" radius={[0, 4, 4, 0]}>
-                <LabelList
-                  dataKey="설비가동율"
-                  position="right"
-                  fill="#059669"
-                  fontSize={11}
-                  fontWeight="bold"
-                  formatter={(v) => `${(v as number).toFixed(1)}%`}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                    <div className="w-full bg-slate-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${isOk ? 'bg-emerald-500' : isWarning ? 'bg-amber-500' : 'bg-red-500'}`}
+                        style={{ width: `${Math.min(t.평균가동율, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className={`text-center text-xl font-black ${textColor}`}>
+                    {t.여유대수 >= 1 ? `+${Math.floor(t.여유대수)}대` : t.여유대수 >= 0.5 ? '~1대' : '부족'}
+                    <span className="text-xs font-medium ml-1">여유</span>
+                  </div>
+                  <div className="text-center text-xs text-slate-400 mt-1">
+                    {isOk ? '영업 수주 가능' : isWarning ? '추가 검토 필요' : '풀가동'}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* 톤수별 요약 테이블 */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-2 px-3 text-slate-500 font-medium">톤수</th>
+                  <th className="text-center py-2 px-3 text-slate-500 font-medium">보유</th>
+                  <th className="text-center py-2 px-3 text-slate-500 font-medium">평균가동율</th>
+                  <th className="text-center py-2 px-3 text-slate-500 font-medium">여유 CAPA</th>
+                  <th className="text-center py-2 px-3 text-slate-500 font-medium">판단</th>
+                  <th className="text-left py-2 px-3 text-slate-500 font-medium">설비</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tonnageCapaAnalysis.map(t => (
+                  <tr key={t.톤수} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="py-2 px-3 font-bold text-slate-800">{t.톤수}T</td>
+                    <td className="py-2 px-3 text-center text-slate-600">{t.대수}대</td>
+                    <td className="py-2 px-3 text-center font-medium text-slate-700">{t.평균가동율}%</td>
+                    <td className="py-2 px-3 text-center font-bold">
+                      <span className={t.여유대수 >= 1 ? 'text-emerald-600' : t.여유대수 >= 0.5 ? 'text-amber-600' : 'text-red-600'}>
+                        {t.여유대수}대분 ({t.여유율}%)
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${
+                        t.여유대수 >= 1 ? 'bg-emerald-100 text-emerald-700' : t.여유대수 >= 0.5 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {t.여유대수 >= 1 ? '수주 가능' : t.여유대수 >= 0.5 ? '검토' : '풀가동'}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-slate-500">{t.설비목록.join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 사출기별 설비가동율 (선택월 상세) - 펼치기/접기 */}
+      {injectionEquipUtil.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200">
+          <button
+            onClick={() => setShowEquipDetail(!showEquipDetail)}
+            className="w-full p-6 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-xl"
+          >
+            <h3 className="font-bold text-slate-700 flex items-center gap-2">
+              <span className="w-1 h-5 bg-emerald-500 rounded-full" />
+              사출기별 설비가동율 ({selectedMonth}월, 보유시간 {MONTHLY_HOURS[selectedMonth - 1]}h/대)
+              <span className="text-xs font-normal text-slate-400 ml-2">{injectionEquipUtil.length}대</span>
+            </h3>
+            <span className={`text-slate-400 transition-transform duration-200 ${showEquipDetail ? 'rotate-180' : ''}`}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </span>
+          </button>
+          {showEquipDetail && (
+            <div className="px-6 pb-6">
+              <ResponsiveContainer width="100%" height={Math.max(300, injectionEquipUtil.length * 40)}>
+                <BarChart
+                  data={injectionEquipUtil}
+                  layout="vertical"
+                  margin={{ top: 10, right: 60, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                  <YAxis
+                    type="category"
+                    dataKey="설비"
+                    width={140}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null
+                      const d = payload[0].payload
+                      return (
+                        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg text-xs">
+                          <div className="font-bold text-slate-700 mb-1">{label}</div>
+                          <div className="text-emerald-600">설비가동율: {d.설비가동율.toFixed(1)}%</div>
+                          <div className="text-slate-500">가동시간: {d.가동시간.toFixed(1)}h / {d.보유시간}h</div>
+                        </div>
+                      )
+                    }}
+                  />
+                  <Bar dataKey="설비가동율" fill="#34d399" radius={[0, 4, 4, 0]}>
+                    <LabelList
+                      dataKey="설비가동율"
+                      position="right"
+                      fill="#059669"
+                      fontSize={11}
+                      fontWeight="bold"
+                      formatter={(v) => `${(v as number).toFixed(1)}%`}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       )}
 

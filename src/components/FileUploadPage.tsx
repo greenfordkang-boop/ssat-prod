@@ -502,7 +502,7 @@ export default function FileUploadPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold text-slate-800 mb-1">데이터 업로드</h2>
-            <p className="text-slate-500 text-sm">MES에서 추출한 CSV 파일을 업로드하세요</p>
+            <p className="text-slate-500 text-sm">MES에서 추출한 CSV / Excel 파일을 업로드하세요 (.csv, .xlsx, .xls)</p>
           </div>
           <div className="flex items-center gap-3 px-5 py-3 bg-white rounded-xl shadow-sm border border-slate-200">
             <span className="text-slate-500 text-sm font-medium">대상월</span>
