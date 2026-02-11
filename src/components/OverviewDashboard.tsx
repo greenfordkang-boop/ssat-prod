@@ -307,10 +307,33 @@ export default function OverviewDashboard() {
   // 선택된 월의 보유시간(분)
   const monthlyCapacityMin = MONTHLY_HOURS[selectedMonth - 1] * 60
 
+  // rawData에서 사출 설비별 가동시간 집계 헬퍼
+  const buildRawEquipMap = (rawData: typeof data.rawData, month: number) => {
+    const map = new Map<string, number>()
+    rawData.forEach(row => {
+      const process = String(row.공정 || '').trim()
+      if (process !== '사출') return
+      const dateStr = String(row.생산일자 || '')
+      const rowMonth = extractMonthFromDate(dateStr)
+      if (rowMonth !== month) return
+      const equip = String(
+        row['설비(라인)명'] || row['설비(라인명)'] || row['설비/LINE'] || row['설비/Line'] ||
+        row['설비명'] || row.LINE || row.Line || row['라인명'] ||
+        row['설비(라인)코드'] || row['설비코드'] || '기타'
+      ).trim()
+      if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
+      const keys = Object.keys(row)
+      const timeKey = keys.find(k => k.includes('작업시간') || k.includes('가동시간'))
+      const operatingMin = parseNumber(timeKey ? row[timeKey] : 0)
+      map.set(equip, (map.get(equip) || 0) + operatingMin)
+    })
+    return map
+  }
+
   // 사출설비별 설비가동율 = 가동시간(분) / 보유시간(분) × 100
   const injectionEquipUtil = useMemo(() => {
     const capacityHours = MONTHLY_HOURS[selectedMonth - 1]
-    const equipMap = new Map<string, number>()
+    let equipMap = new Map<string, number>()
 
     // 1차: availabilityData에서 사출 데이터 필터링 (날짜 매칭 필수)
     const filtered = data.availabilityData.filter(row => {
@@ -322,7 +345,6 @@ export default function OverviewDashboard() {
     })
 
     if (filtered.length > 0) {
-      // availabilityData 사용
       filtered.forEach(row => {
         const equip = String(
           row['설비/LINE'] || row['설비(라인)명'] || row.LINE ||
@@ -332,36 +354,20 @@ export default function OverviewDashboard() {
         const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
         equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
       })
-    } else {
-      // 2차: rawData(생산실적)에서 사출 데이터 fallback
-      const rawFiltered = data.rawData.filter(row => {
-        const process = String(row.공정 || '').trim()
-        if (process !== '사출') return false
-        const dateStr = String(row.생산일자 || '')
-        const rowMonth = extractMonthFromDate(dateStr)
-        return rowMonth === selectedMonth
-      })
-      rawFiltered.forEach(row => {
-        // 설비명: 다양한 필드명 지원 (ProcessDashboard와 동일)
-        const equip = String(
-          row['설비(라인)명'] || row['설비(라인명)'] || row['설비/LINE'] || row['설비/Line'] ||
-          row['설비명'] || row.LINE || row.Line || row['라인명'] ||
-          row['설비(라인)코드'] || row['설비코드'] || '기타'
-        ).trim()
-        if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
-        // 작업시간: 동적 키 검색
-        const keys = Object.keys(row)
-        const timeKey = keys.find(k => k.includes('작업시간') || k.includes('가동시간'))
-        const operatingMin = parseNumber(timeKey ? row[timeKey] : 0)
-        equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
-      })
+    }
+
+    // availability 결과가 비어있거나 '기타'만 있으면 rawData fallback
+    const meaningfulEquip = Array.from(equipMap.keys()).filter(k => k !== '기타')
+    if (meaningfulEquip.length === 0) {
+      equipMap = buildRawEquipMap(data.rawData, selectedMonth)
     }
 
     // 설비별 가동율 계산
     const result = Array.from(equipMap.entries())
+      .filter(([name]) => name !== '기타' || equipMap.size === 1) // '기타'만 있을 때만 표시
       .map(([name, totalMin]) => ({
         설비: name,
-        가동시간: Math.round(totalMin / 60 * 10) / 10, // 시간 단위
+        가동시간: Math.round(totalMin / 60 * 10) / 10,
         보유시간: capacityHours,
         설비가동율: Math.round((totalMin / monthlyCapacityMin) * 1000) / 10
       }))
@@ -385,16 +391,10 @@ export default function OverviewDashboard() {
       return process === '사출'
     })
 
-    // 사출 생산실적 데이터 (fallback용)
-    const injectionRaw = data.rawData.filter(row => {
-      const process = String(row.공정 || '').trim()
-      return process === '사출'
-    })
-
     return Array.from({ length: 12 }, (_, i) => {
       const month = i + 1
       const capMin = MONTHLY_HOURS[i] * 60
-      const equipMap = new Map<string, number>()
+      let equipMap = new Map<string, number>()
 
       // 1차: availabilityData에서 해당 월 데이터
       const monthAvailData = injectionAvail.filter(row => {
@@ -413,40 +413,32 @@ export default function OverviewDashboard() {
           const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
           equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
         })
-      } else {
-        // 2차: rawData(생산실적) fallback
-        const monthRawData = injectionRaw.filter(row => {
-          const dateStr = String(row.생산일자 || '')
-          const rowMonth = extractMonthFromDate(dateStr)
-          return rowMonth === month
-        })
-        monthRawData.forEach(row => {
-          const equip = String(
-            row['설비(라인)명'] || row['설비(라인명)'] || row['설비/LINE'] || row['설비/Line'] ||
-            row['설비명'] || row.LINE || row.Line || row['라인명'] ||
-            row['설비(라인)코드'] || row['설비코드'] || '기타'
-          ).trim()
-          if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
-          const keys = Object.keys(row)
-          const timeKey = keys.find(k => k.includes('작업시간') || k.includes('가동시간'))
-          const operatingMin = parseNumber(timeKey ? row[timeKey] : 0)
-          equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
-        })
       }
 
-      if (equipMap.size === 0) {
+      // availability 결과가 비어있거나 '기타'만 있으면 rawData fallback
+      const meaningfulEquip = Array.from(equipMap.keys()).filter(k => k !== '기타')
+      if (meaningfulEquip.length === 0) {
+        equipMap = buildRawEquipMap(data.rawData, month)
+      }
+
+      // '기타' 제거 (실제 설비 데이터가 있으면)
+      const finalMap = new Map(
+        Array.from(equipMap.entries()).filter(([name]) => name !== '기타' || equipMap.size === 1)
+      )
+
+      if (finalMap.size === 0) {
         return { month: `${month}월`, 설비가동율: 0, 보유시간: MONTHLY_HOURS[i], 대수: 0 }
       }
 
       // 설비별 가동율 → 평균
-      const rates = Array.from(equipMap.values()).map(totalMin =>
+      const rates = Array.from(finalMap.values()).map(totalMin =>
         (totalMin / capMin) * 100
       )
       const avg = rates.length > 0
         ? Math.round((rates.reduce((a, b) => a + b, 0) / rates.length) * 10) / 10
         : 0
 
-      return { month: `${month}월`, 설비가동율: avg, 보유시간: MONTHLY_HOURS[i], 대수: equipMap.size }
+      return { month: `${month}월`, 설비가동율: avg, 보유시간: MONTHLY_HOURS[i], 대수: finalMap.size }
     })
   }, [data.availabilityData, data.rawData])
 
