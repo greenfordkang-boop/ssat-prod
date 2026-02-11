@@ -302,6 +302,56 @@ export default function OverviewDashboard() {
     return sortedProcessOEE.filter(row => row.공정 === processFilter)
   }, [sortedProcessOEE, processFilter])
 
+  // 월별 보유시간 (일수 × 24시간, 하드세팅)
+  const MONTHLY_HOURS = [744, 672, 744, 720, 744, 720, 744, 744, 720, 744, 720, 744]
+  // 선택된 월의 보유시간(분)
+  const monthlyCapacityMin = MONTHLY_HOURS[selectedMonth - 1] * 60
+
+  // 사출설비별 설비가동율 = 가동시간(분) / 보유시간(분) × 100
+  const injectionEquipUtil = useMemo(() => {
+    // 선택된 월에 맞는 사출 가동율 데이터 필터링
+    const filtered = data.availabilityData.filter(row => {
+      const process = String(row.공정 || row.process || '').trim()
+      if (process !== '사출') return false
+      const dateStr = String(row.date || row.일자 || row.생산일자 || row.날짜 || row.Date || row.DATE || '')
+      const rowMonth = extractMonthFromDate(dateStr)
+      return !rowMonth || rowMonth === selectedMonth
+    })
+
+    // 설비별 가동시간 합산
+    const equipMap = new Map<string, number>()
+    filtered.forEach(row => {
+      const equip = String(
+        row['설비/LINE'] || row['설비(라인)명'] || row.LINE ||
+        row.설비명 || row.설비 || row.라인명 || '기타'
+      ).trim()
+      if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
+
+      const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
+      equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
+    })
+
+    // 설비별 가동율 계산
+    const capacityHours = MONTHLY_HOURS[selectedMonth - 1]
+    const result = Array.from(equipMap.entries())
+      .map(([name, totalMin]) => ({
+        설비: name,
+        가동시간: Math.round(totalMin / 60 * 10) / 10, // 시간 단위
+        보유시간: capacityHours,
+        설비가동율: Math.round((totalMin / monthlyCapacityMin) * 1000) / 10
+      }))
+      .sort((a, b) => b.설비가동율 - a.설비가동율)
+
+    return result
+  }, [data.availabilityData, selectedMonth, monthlyCapacityMin])
+
+  // 사출설비 평균 설비가동율
+  const avgEquipUtil = useMemo(() => {
+    if (injectionEquipUtil.length === 0) return 0
+    const sum = injectionEquipUtil.reduce((acc, e) => acc + e.설비가동율, 0)
+    return Math.round((sum / injectionEquipUtil.length) * 10) / 10
+  }, [injectionEquipUtil])
+
   // OEE 요약 통계 (테이블 데이터 기반)
   const oeeStats = useMemo(() => {
     if (processOEE.length === 0) {
@@ -515,7 +565,7 @@ export default function OverviewDashboard() {
       </div>
 
       {/* OEE 요약 카드 */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-6 gap-4">
         <div className="bg-white rounded-xl p-6 border border-slate-200">
           <div className="text-sm text-slate-500 mb-1">{selectedMonth}월 종합효율 (OEE)</div>
           <div className="text-4xl font-bold text-slate-800">{oeeStats.oee.toFixed(1)}%</div>
@@ -525,6 +575,12 @@ export default function OverviewDashboard() {
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
           <div className="text-sm text-slate-500 mb-1">평균 시간가동율</div>
           <div className="text-4xl font-bold text-blue-600">{oeeStats.timeAvailability.toFixed(1)}%</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+          <div className="text-sm text-slate-500 mb-1">설비가동율 (사출)</div>
+          <div className="text-4xl font-bold text-emerald-600">{avgEquipUtil.toFixed(1)}%</div>
+          <div className="text-xs text-slate-400 mt-2">보유 {MONTHLY_HOURS[selectedMonth - 1]}h × {injectionEquipUtil.length}대</div>
         </div>
 
         <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-6 border border-slate-200">
@@ -543,6 +599,55 @@ export default function OverviewDashboard() {
           <div className="text-xs text-slate-400 mt-2">불량 {formatNumber(oeeStats.totalDefect)} EA</div>
         </div>
       </div>
+
+      {/* 사출 설비가동율 차트 */}
+      {injectionEquipUtil.length > 0 && (
+        <div className="bg-white rounded-xl p-6 border border-slate-200">
+          <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <span className="w-1 h-5 bg-emerald-500 rounded-full" />
+            사출 설비가동율 ({selectedMonth}월 기준, 보유시간 {MONTHLY_HOURS[selectedMonth - 1]}h/대)
+          </h3>
+          <ResponsiveContainer width="100%" height={Math.max(300, injectionEquipUtil.length * 40)}>
+            <BarChart
+              data={injectionEquipUtil}
+              layout="vertical"
+              margin={{ top: 10, right: 60, left: 20, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+              <YAxis
+                type="category"
+                dataKey="설비"
+                width={140}
+                tick={{ fontSize: 11 }}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  const d = payload[0].payload
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg text-xs">
+                      <div className="font-bold text-slate-700 mb-1">{label}</div>
+                      <div className="text-emerald-600">설비가동율: {d.설비가동율.toFixed(1)}%</div>
+                      <div className="text-slate-500">가동시간: {d.가동시간.toFixed(1)}h / {d.보유시간}h</div>
+                    </div>
+                  )
+                }}
+              />
+              <Bar dataKey="설비가동율" fill="#34d399" radius={[0, 4, 4, 0]}>
+                <LabelList
+                  dataKey="설비가동율"
+                  position="right"
+                  fill="#059669"
+                  fontSize={11}
+                  fontWeight="bold"
+                  formatter={(v) => `${(v as number).toFixed(1)}%`}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* 월별 OEE 추이 차트 */}
       <div className="bg-white rounded-xl p-6 border border-slate-200">

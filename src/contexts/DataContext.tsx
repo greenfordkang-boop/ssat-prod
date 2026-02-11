@@ -98,9 +98,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       while (hasMore) {
         pageCount++
-        const { data: result, error, count } = await supabase
+        const { data: result, error } = await supabase
           .from(tableName)
-          .select('*', { count: 'exact' })
+          .select('*')
           .range(offset, offset + PAGE_SIZE - 1)
           .order('id', { ascending: true })
 
@@ -109,7 +109,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw error
         }
 
-        console.log(`📄 [${tableName}] 페이지${pageCount}: ${result?.length || 0}건 (offset: ${offset}, 총: ${count})`)
+        console.log(`📄 [${tableName}] 페이지${pageCount}: ${result?.length || 0}건 (offset: ${offset})`)
 
         if (!result || result.length === 0) {
           hasMore = false
@@ -158,14 +158,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const loadUploadTimes = async (): Promise<UploadTimes> => {
     const times: UploadTimes = {}
     try {
-      for (const [key, tableName] of Object.entries(TABLE_MAPPING)) {
-        const { data: result } = await supabase
-          .from(tableName)
-          .select('created_at')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
+      const entries = Object.entries(TABLE_MAPPING)
+      const results = await Promise.all(
+        entries.map(([, tableName]) =>
+          supabase
+            .from(tableName)
+            .select('created_at')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+        )
+      )
 
+      entries.forEach(([key], i) => {
+        const result = results[i].data
         if (result?.created_at) {
           const date = new Date(result.created_at)
           times[key] = date.toLocaleString('ko-KR', {
@@ -175,7 +181,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             minute: '2-digit'
           })
         }
-      }
+      })
       console.log('📅 업로드 시간 로드 완료:', times)
     } catch (e) {
       console.error('업로드 시간 로드 실패:', e)
@@ -261,20 +267,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         console.log(`💾 [${tableName}] 저장 진행: ${i + batch.length}/${insertData.length}건`)
       }
 
-      // 저장 후 검증: 실제 저장된 건수 확인
-      const { count, error: countError } = await supabase
-        .from(tableName)
-        .select('*', { count: 'exact', head: true })
-
-      if (countError) {
-        console.warn(`⚠️ [${tableName}] 검증 쿼리 실패:`, countError)
-      } else {
-        console.log(`✅ [${tableName}] 저장 완료 및 검증: DB에 ${count}건 확인 (업로드 ${items.length}건)`)
-        if (count !== items.length) {
-          console.warn(`⚠️ [${tableName}] 건수 불일치! 업로드: ${items.length}, DB: ${count}`)
-        }
-      }
-
+      console.log(`✅ [${tableName}] 저장 완료: ${items.length}건`)
       return true
     } catch (e) {
       console.error(`❌ 저장 실패 (${tableName}):`, e)
@@ -296,12 +289,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     console.log('👤 현재 사용자:', user.email)
 
     try {
+      const entries = Object.entries(TABLE_MAPPING)
+      const loaded = await Promise.all(entries.map(([, tableName]) => loadFromSupabase(tableName)))
       const results: Partial<DashboardData> = {}
-
-      for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
-        const loaded = await loadFromSupabase(tableName)
-        results[stateKey as keyof DashboardData] = loaded as never
-      }
+      entries.forEach(([stateKey], i) => {
+        results[stateKey as keyof DashboardData] = loaded[i] as never
+      })
 
       setData(prev => ({ ...prev, ...results }))
 
@@ -458,12 +451,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.log('🌐 Supabase URL:', 'gipksxojxdkqpyyiihcc.supabase.co')
 
       try {
+        const entries = Object.entries(TABLE_MAPPING)
+        const loaded = await Promise.all(entries.map(([, tableName]) => loadFromSupabase(tableName)))
         const results: Partial<DashboardData> = {}
-
-        for (const [stateKey, tableName] of Object.entries(TABLE_MAPPING)) {
-          const loaded = await loadFromSupabase(tableName)
-          results[stateKey as keyof DashboardData] = loaded as never
-        }
+        entries.forEach(([stateKey], i) => {
+          results[stateKey as keyof DashboardData] = loaded[i] as never
+        })
 
         setData(prev => ({ ...prev, ...results }))
         hasLoadedRef.current = true
