@@ -109,6 +109,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // 10초 안전 타임아웃 — 인증 체크가 멈추면 로딩 강제 해제
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn('⏰ Auth 로딩 타임아웃 (10초) — 로딩 강제 해제')
+        setLoading(false)
+      }
+    }, 10000)
+
     checkSession()
 
     // Auth 상태 변경 구독 (로그인/로그아웃 감지)
@@ -122,12 +130,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (isMounted) {
             setUser(session.user)
             setProfile(userProfile)
-            setLoading(false) // 로딩 완료
+            setLoading(false)
           }
         } else if (event === 'SIGNED_OUT') {
           if (isMounted) {
             setUser(null)
             setProfile(null)
+            setLoading(false)
+          }
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          // 탭 복귀 시 토큰 갱신 — 세션 유지
+          console.log('토큰 갱신됨')
+          if (isMounted) {
+            setUser(session.user)
+            setLoading(false)
           }
         } else if (event === 'INITIAL_SESSION') {
           // 초기 세션 - checkSession에서 이미 처리
@@ -143,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Cleanup
     return () => {
       isMounted = false
+      clearTimeout(safetyTimeout)
       subscription.unsubscribe()
     }
   }, [])

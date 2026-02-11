@@ -493,12 +493,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]) // user만 dependency - 무한 루프 방지
 
-  // user 변경 시 로드 상태 리셋
+  // user가 null(로그아웃)이 되면 로드 상태 리셋 → 재로그인 시 데이터 재로드 보장
   useEffect(() => {
-    return () => {
-      // 컴포넌트 언마운트 시에만 리셋 (user 변경 시에는 리셋하지 않음)
+    if (!user) {
+      hasLoadedRef.current = false
+      isLoadingRef.current = false
+      setData(initialData)
+      setLoading(false)
     }
-  }, [])
+  }, [user])
 
   return (
     <DataContext.Provider value={{
