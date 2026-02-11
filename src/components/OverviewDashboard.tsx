@@ -345,12 +345,59 @@ export default function OverviewDashboard() {
     return result
   }, [data.availabilityData, selectedMonth, monthlyCapacityMin])
 
-  // 사출설비 평균 설비가동율
+  // 사출설비 평균 설비가동율 (선택된 월)
   const avgEquipUtil = useMemo(() => {
     if (injectionEquipUtil.length === 0) return 0
     const sum = injectionEquipUtil.reduce((acc, e) => acc + e.설비가동율, 0)
     return Math.round((sum / injectionEquipUtil.length) * 10) / 10
   }, [injectionEquipUtil])
+
+  // 월별 사출 설비가동율 추이 (1~12월)
+  const monthlyEquipUtil = useMemo(() => {
+    // 사출 가동율 데이터만 추출
+    const injectionAvail = data.availabilityData.filter(row => {
+      const process = String(row.공정 || row.process || '').trim()
+      return process === '사출'
+    })
+
+    return Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1
+      const capMin = MONTHLY_HOURS[i] * 60
+
+      // 해당 월 데이터 필터링
+      const monthData = injectionAvail.filter(row => {
+        const dateStr = String(row.date || row.일자 || row.생산일자 || row.날짜 || row.Date || row.DATE || '')
+        const rowMonth = extractMonthFromDate(dateStr)
+        return rowMonth === month
+      })
+
+      if (monthData.length === 0) {
+        return { month: `${month}월`, 설비가동율: 0, 보유시간: MONTHLY_HOURS[i], 대수: 0 }
+      }
+
+      // 설비별 가동시간 합산
+      const equipMap = new Map<string, number>()
+      monthData.forEach(row => {
+        const equip = String(
+          row['설비/LINE'] || row['설비(라인)명'] || row.LINE ||
+          row.설비명 || row.설비 || row.라인명 || '기타'
+        ).trim()
+        if (!equip || equip === '합계' || equip === 'TOTAL' || equip === '총계') return
+        const operatingMin = parseNumber(row['가동시간(분)'] || row.가동시간 || 0)
+        equipMap.set(equip, (equipMap.get(equip) || 0) + operatingMin)
+      })
+
+      // 설비별 가동율 → 평균
+      const rates = Array.from(equipMap.values()).map(totalMin =>
+        (totalMin / capMin) * 100
+      )
+      const avg = rates.length > 0
+        ? Math.round((rates.reduce((a, b) => a + b, 0) / rates.length) * 10) / 10
+        : 0
+
+      return { month: `${month}월`, 설비가동율: avg, 보유시간: MONTHLY_HOURS[i], 대수: equipMap.size }
+    })
+  }, [data.availabilityData])
 
   // OEE 요약 통계 (테이블 데이터 기반)
   const oeeStats = useMemo(() => {
@@ -600,12 +647,44 @@ export default function OverviewDashboard() {
         </div>
       </div>
 
-      {/* 사출 설비가동율 차트 */}
+      {/* 월별 사출 설비가동율 추이 */}
+      <div className="bg-white rounded-xl p-6 border border-slate-200">
+        <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <span className="w-1 h-5 bg-emerald-500 rounded-full" />
+          월별 사출 설비가동율 추이
+        </h3>
+        <ResponsiveContainer width="100%" height={340}>
+          <ComposedChart data={monthlyEquipUtil} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+            <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+            <Tooltip
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null
+                const d = payload[0].payload
+                return (
+                  <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg text-xs">
+                    <div className="font-bold text-slate-700 mb-1">{label}</div>
+                    <div className="text-emerald-600">설비가동율: {d.설비가동율.toFixed(1)}%</div>
+                    <div className="text-slate-500">보유시간: {d.보유시간}h/대 · {d.대수}대</div>
+                  </div>
+                )
+              }}
+            />
+            <Bar dataKey="설비가동율" fill="#6ee7b7" radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="설비가동율" position="top" fill="#059669" fontSize={10} fontWeight="bold" formatter={(v) => (v as number) > 0 ? `${(v as number).toFixed(1)}%` : ''} />
+            </Bar>
+            <Line type="monotone" dataKey="설비가동율" stroke="#059669" strokeWidth={2} dot={{ r: 4, fill: '#059669' }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* 사출기별 설비가동율 (선택월 상세) */}
       {injectionEquipUtil.length > 0 && (
         <div className="bg-white rounded-xl p-6 border border-slate-200">
           <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
             <span className="w-1 h-5 bg-emerald-500 rounded-full" />
-            사출 설비가동율 ({selectedMonth}월 기준, 보유시간 {MONTHLY_HOURS[selectedMonth - 1]}h/대)
+            사출기별 설비가동율 ({selectedMonth}월, 보유시간 {MONTHLY_HOURS[selectedMonth - 1]}h/대)
           </h3>
           <ResponsiveContainer width="100%" height={Math.max(300, injectionEquipUtil.length * 40)}>
             <BarChart
