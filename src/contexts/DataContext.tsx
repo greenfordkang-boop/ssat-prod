@@ -60,7 +60,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined)
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [data, setData] = useState<DashboardData>(initialData)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [filters, setFilters] = useState<FilterState>({ process: 'all', equipment: 'all', product: 'all' })
@@ -433,6 +433,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // 이미 로딩 중이거나 이미 로드한 경우 스킵
     if (!user || isLoadingRef.current || hasLoadedRef.current) {
+      // 이미 로드 완료 상태면 loading false 보장
+      if (hasLoadedRef.current) setLoading(false)
       return
     }
 
@@ -440,15 +442,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // 다시 한번 확인 (비동기 환경에서의 race condition 방지)
       if (isLoadingRef.current || hasLoadedRef.current) {
         console.log('⏭️ 이미 로딩 중이거나 로드 완료됨 - 스킵')
+        if (hasLoadedRef.current) setLoading(false)
         return
       }
 
       isLoadingRef.current = true
       setLoading(true)
 
+      // 30초 타임아웃 — 무한 로딩 방지
+      const timeoutId = setTimeout(() => {
+        console.error('⏰ 데이터 로딩 타임아웃 (30초)')
+        isLoadingRef.current = false
+        setLoading(false)
+      }, 30000)
+
       console.log('🚀 ========== 초기 데이터 로드 시작 ==========')
       console.log('👤 사용자:', user.email)
-      console.log('🌐 Supabase URL:', 'gipksxojxdkqpyyiihcc.supabase.co')
 
       try {
         const entries = Object.entries(TABLE_MAPPING)
@@ -477,6 +486,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           console.error('❌ 초기 데이터 로드 실패:', e)
         }
       } finally {
+        clearTimeout(timeoutId)
         isLoadingRef.current = false
         setLoading(false)
       }

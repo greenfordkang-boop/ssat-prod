@@ -312,13 +312,13 @@ export default function OverviewDashboard() {
     const capacityHours = MONTHLY_HOURS[selectedMonth - 1]
     const equipMap = new Map<string, number>()
 
-    // 1차: availabilityData에서 사출 데이터 필터링
+    // 1차: availabilityData에서 사출 데이터 필터링 (날짜 매칭 필수)
     const filtered = data.availabilityData.filter(row => {
       const process = String(row.공정 || row.process || '').trim()
       if (process !== '사출') return false
       const dateStr = String(row.date || row.일자 || row.생산일자 || row.날짜 || row.Date || row.DATE || '')
       const rowMonth = extractMonthFromDate(dateStr)
-      return !rowMonth || rowMonth === selectedMonth
+      return rowMonth === selectedMonth
     })
 
     if (filtered.length > 0) {
