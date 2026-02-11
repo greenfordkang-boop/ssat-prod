@@ -1,12 +1,22 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useAuth } from '@/contexts/AuthContext'
 import { useData } from '@/contexts/DataContext'
 import Navigation from './Navigation'
 import OverviewDashboard from './OverviewDashboard'
 import FileUploadPage from './FileUploadPage'
-import ProcessDashboard from './ProcessDashboard'
+const ProcessDashboard = dynamic(() => import('./ProcessDashboard'), {
+  loading: () => (
+    <div className="flex items-center justify-center py-24">
+      <div className="bg-white rounded-xl p-6 shadow-xl text-center">
+        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3" />
+        <p className="text-slate-600">공정 데이터 로딩 중...</p>
+      </div>
+    </div>
+  )
+})
 import KeyIssuesBoard from './KeyIssuesBoard'
 import DowntimeDashboard from './DowntimeDashboard'
 import WipDashboard from './WipDashboard'
@@ -65,7 +75,7 @@ export default function Dashboard() {
       />
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-6 py-6">
+      <main className="w-full px-6 py-6">
         {/* 인라인 로딩 — 네비게이션은 항상 조작 가능 */}
         {dataLoading && (
           <div className="flex items-center justify-center py-24">

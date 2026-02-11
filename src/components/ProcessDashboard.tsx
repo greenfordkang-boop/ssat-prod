@@ -140,12 +140,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // ⭐ 업종별데이터(detailData)에서 해당 공정 + 월 필터링
   const detailForProcess = useMemo(() => {
-    // 디버깅: 전체 데이터 확인
-    if (data.detailData.length > 0) {
-      const sample = data.detailData[0]
-      const processValues = new Set(data.detailData.map(r => String(r.공정 || r.공정명 || '')))
-      console.log(`📊 업종별데이터 전체: ${data.detailData.length}건, 공정값: ${Array.from(processValues).join(', ')}`)
-    }
+    if (subMenu !== 'production') return []
 
     return data.detailData.filter(row => {
       // 공정 필터링 - 다양한 필드명과 값 지원
@@ -167,7 +162,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
       return month === 0 || month === selectedMonth
     })
-  }, [data.detailData, processName, selectedMonth])
+  }, [data.detailData, processName, selectedMonth, subMenu])
 
   // ⭐ 상단 카드 통계 - 업종별데이터 기반
   const stats = useMemo(() => {
@@ -175,8 +170,6 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     let good = 0
     let defect = 0
     let workTime = 0
-
-    console.log(`🏭 [${processName}] 업종별데이터 필터 결과: ${detailForProcess.length}건`)
 
     detailForProcess.forEach(row => {
       const keys = Object.keys(row)
@@ -244,13 +237,6 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   const equipmentStats = useMemo(() => {
     const equip: Record<string, { good: number; defect: number; time: number }> = {}
 
-    // 디버깅
-    if (detailForProcess.length > 0) {
-      const sample = detailForProcess[0]
-      const keys = Object.keys(sample)
-      console.log(`🔍 [${processName}] 필드명:`, keys.slice(0, 10).join(', '))
-    }
-
     // 설비(라인)명 기준으로 집계
     detailForProcess.forEach(row => {
       // 설비명 추출
@@ -277,8 +263,6 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       equip[equipName].defect += defectQty > 0 ? defectQty : 0
       equip[equipName].time += time
     })
-
-    console.log(`🏭 [${processName}] 설비 집계: ${Object.keys(equip).length}개`)
 
     let result = Object.entries(equip)
       .map(([name, values]) => {
@@ -314,7 +298,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // 선택된 설비의 불량 상세 데이터 (업종별데이터 기준)
   const defectDetails = useMemo(() => {
-    if (!selectedEquipment) return []
+    if (!defectModalOpen || !selectedEquipment) return []
 
     // 업종별데이터에서 해당 공정 + 월 필터링
     const detailForProcess = data.detailData.filter(row => {
@@ -371,7 +355,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
         }
       })
       .sort((a, b) => a.생산일자.localeCompare(b.생산일자))
-  }, [data.detailData, processName, selectedMonth, selectedEquipment])
+  }, [data.detailData, processName, selectedMonth, selectedEquipment, defectModalOpen])
 
   // 불량 상세 팝업 열기
   const openDefectModal = (equipmentName: string) => {
@@ -381,6 +365,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // 업종별 데이터에서 품목별 UPH/UPPH 매핑 생성
   const productUphMap = useMemo(() => {
+    if (subMenu !== 'uph') return new Map<string, { uph: number; upph: number }>()
     const map = new Map<string, { uph: number; upph: number }>()
     data.detailData.forEach(row => {
       // 품목명 또는 품목코드로 매핑
@@ -400,7 +385,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       }
     })
     return map
-  }, [data.detailData])
+  }, [data.detailData, subMenu])
 
   // UPH 분석 (업종별 데이터 기준)
   const uphAnalysis = useMemo(() => {
@@ -477,17 +462,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // CT 데이터 분석
   const ctAnalysis = useMemo(() => {
-    // 디버깅: CT 데이터 컬럼 확인
-    if (data.ctData.length > 0) {
-      console.log('🔧 CT 데이터 샘플 키:', Object.keys(data.ctData[0]))
-      console.log('🔧 CT 데이터 샘플 값:', data.ctData[0])
-      // 품목 관련 필드 찾기
-      const productKeys = Object.keys(data.ctData[0]).filter(k =>
-        k.includes('품목') || k.includes('품명') || k.includes('제품') ||
-        k.includes('ITEM') || k.includes('Item') || k.includes('모델') || k.includes('Model')
-      )
-      console.log('🔧 CT 품목 관련 필드:', productKeys)
-    }
+    if (subMenu !== 'cycletime') return []
 
     const processCT = data.ctData.filter(row =>
       row.공정 === processName || row.process === processName
@@ -535,11 +510,11 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result.slice(0, 50)
-  }, [data.ctData, processName, ctSort])
+  }, [data.ctData, processName, ctSort, subMenu])
 
   // 선택된 설비의 CT 상세 데이터
   const ctDetails = useMemo(() => {
-    if (!selectedCtEquipment) return []
+    if (!ctModalOpen || !selectedCtEquipment) return []
 
     const processCT = data.ctData.filter(row =>
       row.공정 === processName || row.process === processName
@@ -576,7 +551,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
           차이: actualCT - standardCT
         }
       })
-  }, [data.ctData, processName, selectedCtEquipment])
+  }, [data.ctData, processName, selectedCtEquipment, ctModalOpen])
 
   // CT 상세 팝업 열기
   const openCtModal = (equipmentName: string) => {
@@ -586,6 +561,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
 
   // 검포장 데이터 (정렬/필터 적용)
   const packagingData = useMemo(() => {
+    if (subMenu !== 'packaging') return []
     let result = data.packagingStatusData.filter(row => {
       // 공정 필터
       if (row.공정 && row.공정 !== processName) return false
@@ -633,10 +609,11 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result.slice(0, 100)
-  }, [data.packagingStatusData, processName, selectedMonth, packagingFilter, packagingSort])
+  }, [data.packagingStatusData, processName, selectedMonth, packagingFilter, packagingSort, subMenu])
 
   // 검포장 통계 (대시보드용)
   const packagingStats = useMemo(() => {
+    if (subMenu !== 'packaging') return null
     const allData = data.packagingStatusData.filter(row => {
       // 공정 필터
       if (row.공정 && row.공정 !== processName) return false
@@ -726,17 +703,19 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       topEquipments,
       topProducts
     }
-  }, [data.packagingStatusData, processName, selectedMonth])
+  }, [data.packagingStatusData, processName, selectedMonth, subMenu])
 
   // 불량수리 데이터
   const repairData = useMemo(() => {
+    if (subMenu !== 'defect-repair') return []
     return data.repairStatusData.filter(row =>
       row.공정 === processName || !row.공정
     ).slice(0, 50)
-  }, [data.repairStatusData, processName])
+  }, [data.repairStatusData, processName, subMenu])
 
   // 자재불량 데이터 (정렬/필터 적용)
   const materialDefectData = useMemo(() => {
+    if (subMenu !== 'material-defect') return []
     let result = data.materialDefectData.filter(row => {
       // 공정 필터
       if (row.공정 && row.공정 !== processName) return false
@@ -786,10 +765,11 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
     }
 
     return result.slice(0, 100)
-  }, [data.materialDefectData, processName, selectedMonth, materialFilter, materialSort])
+  }, [data.materialDefectData, processName, selectedMonth, materialFilter, materialSort, subMenu])
 
   // 자재불량 통계 (대시보드용)
   const materialDefectStats = useMemo(() => {
+    if (subMenu !== 'material-defect') return null
     const allData = data.materialDefectData.filter(row => {
       // 공정 필터
       if (row.공정 && row.공정 !== processName) return false
@@ -918,7 +898,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       topParts,
       dailyTrend
     }
-  }, [data.materialDefectData, processName, selectedMonth])
+  }, [data.materialDefectData, processName, selectedMonth, subMenu])
 
   // 정렬 핸들러
   const handleSort = (setter: React.Dispatch<React.SetStateAction<SortConfig>>, key: string, current: SortConfig) => {

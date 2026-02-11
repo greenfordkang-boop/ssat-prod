@@ -151,7 +151,7 @@ export default function Navigation({
       {/* Process Sub Navigation */}
       {activeTab === 'process' && (
         <div className="bg-gray-50/80 backdrop-blur-xl border-b border-gray-200/50">
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="w-full px-6">
             <div className="flex items-center h-11 gap-1">
               {processTabs.map(process => (
                 <button
@@ -179,7 +179,7 @@ export default function Navigation({
       {/* Sub Menu (3rd level) - 중점관리항목은 서브메뉴 없음 */}
       {activeTab === 'process' && activeProcess && activeProcess !== 'key-issues' && (
         <div className="bg-white border-b border-gray-100">
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="w-full px-6">
             <div className="flex items-center h-10 gap-0.5">
               {commonSubMenus.map(menu => (
                 <button
@@ -215,7 +215,7 @@ export default function Navigation({
       {/* WIP Sub Navigation */}
       {activeTab === 'wip' && (
         <div className="bg-gray-50/80 backdrop-blur-xl border-b border-gray-200/50">
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="w-full px-6">
             <div className="flex items-center h-11 gap-1">
               <button
                 onClick={() => onSubMenuChange('status')}
@@ -245,7 +245,7 @@ export default function Navigation({
       {/* Mold Sub Navigation */}
       {activeTab === 'mold' && (
         <div className="bg-gray-50/80 backdrop-blur-xl border-b border-gray-200/50">
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="w-full px-6">
             <div className="flex items-center h-11 gap-1">
               <button
                 onClick={() => onSubMenuChange('status')}
