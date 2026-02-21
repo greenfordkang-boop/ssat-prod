@@ -180,15 +180,22 @@ export default function FileUploadPage() {
         dataToUpload = [...existingOther, ...newData]
       }
 
-      // 생산실적의 경우 월 정보 추출
+      // 생산실적 / 업종별데이터의 경우 월 정보 추출 (월별 병합용)
       let months: number[] = []
-      if (dataKey === 'rawData') {
+      if (dataKey === 'rawData' || dataKey === 'detailData') {
         const monthSet = new Set<number>()
         parsedData.forEach((row) => {
-          const dateStr = row.생산일자 as string
+          const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || '')
           if (dateStr) {
-            const match = dateStr.match(/\d{4}-(\d{2})-\d{2}/)
-            if (match) monthSet.add(parseInt(match[1], 10))
+            let month = 0
+            if (dateStr.includes('-')) {
+              month = parseInt(dateStr.split('-')[1]) || 0
+            } else if (dateStr.includes('/')) {
+              month = parseInt(dateStr.split('/')[1]) || 0
+            } else if (dateStr.length === 8) {
+              month = parseInt(dateStr.substring(4, 6)) || 0
+            }
+            if (month > 0) monthSet.add(month)
           }
         })
         months = Array.from(monthSet)

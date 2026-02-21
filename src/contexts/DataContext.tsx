@@ -329,15 +329,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const tableName = TABLE_MAPPING[type]
       let finalData: unknown[]
 
-      if (type === 'rawData' && months && months.length > 0) {
+      if ((type === 'rawData' || type === 'detailData') && months && months.length > 0) {
         // ⭐ 중요: Supabase에서 기존 데이터를 직접 가져와서 병합
         console.log(`📥 [${tableName}] 기존 데이터 로드 중...`)
-        const existingFromDB = await loadFromSupabase(tableName) as ProductionData[]
+        const existingFromDB = await loadFromSupabase(tableName) as Record<string, unknown>[]
         console.log(`📥 [${tableName}] DB에서 ${existingFromDB.length}건 로드됨`)
 
         // 업로드할 월의 데이터만 제거하고 나머지 유지
         const existingData = existingFromDB.filter(item => {
-          const itemMonth = getMonthFromDate(item.생산일자)
+          const itemMonth = type === 'rawData'
+            ? getMonthFromDate((item as ProductionData).생산일자)
+            : getMonthFromItem(item)
           return !months.includes(itemMonth)
         })
 
@@ -422,11 +424,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return filtered
   }, [data.rawData, selectedMonth, filters])
 
-  // 날짜에서 월 추출
+  // 날짜에서 월 추출 (다양한 형식 지원)
   const getMonthFromDate = (dateStr?: string): number => {
     if (!dateStr) return 0
-    const match = dateStr.match(/\d{4}-(\d{2})-\d{2}/)
-    return match ? parseInt(match[1], 10) : 0
+    if (dateStr.includes('-')) {
+      return parseInt(dateStr.split('-')[1]) || 0
+    }
+    if (dateStr.includes('/')) {
+      return parseInt(dateStr.split('/')[1]) || 0
+    }
+    if (dateStr.length === 8 && /^\d{8}$/.test(dateStr)) {
+      return parseInt(dateStr.substring(4, 6)) || 0
+    }
+    return 0
+  }
+
+  // detailData 등에서 월 추출 (여러 날짜 필드 지원)
+  const getMonthFromItem = (item: Record<string, unknown>): number => {
+    const dateStr = String(item['생산일자'] || item['작업일자'] || item['일자'] || '')
+    return getMonthFromDate(dateStr)
   }
 
   // 초기 데이터 로드 (user 변경 시에만)
