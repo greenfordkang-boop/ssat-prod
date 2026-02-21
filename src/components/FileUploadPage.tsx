@@ -5,18 +5,31 @@ import { useData } from '@/contexts/DataContext'
 import { parseCSV, parseAvailabilityCSV } from '@/lib/utils'
 import * as XLSX from 'xlsx'
 
-// 엑셀 파일 파싱 함수
+// 엑셀 파일 파싱 함수 (cellDates: true → Date 객체를 YYYY-MM-DD 문자열로 변환)
 const parseExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
-  const workbook = XLSX.read(buffer, { type: 'array' })
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
   const firstSheetName = workbook.SheetNames[0]
   const worksheet = workbook.Sheets[firstSheetName]
   const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
-  return jsonData as Record<string, unknown>[]
+  return (jsonData as Record<string, unknown>[]).map(row => {
+    const converted: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(row)) {
+      if (value instanceof Date) {
+        const y = value.getFullYear()
+        const m = String(value.getMonth() + 1).padStart(2, '0')
+        const d = String(value.getDate()).padStart(2, '0')
+        converted[key] = `${y}-${m}-${d}`
+      } else {
+        converted[key] = value
+      }
+    }
+    return converted
+  })
 }
 
 // 가동율 엑셀 파싱 - 1행을 헤더로 사용 (index 0)
 const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] => {
-  const workbook = XLSX.read(buffer, { type: 'array' })
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
   const firstSheetName = workbook.SheetNames[0]
   const worksheet = workbook.Sheets[firstSheetName]
 
@@ -55,7 +68,14 @@ const parseAvailabilityExcel = (buffer: ArrayBuffer): Record<string, unknown>[] 
     for (let col = range.s.c; col <= range.e.c; col++) {
       const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
       const cell = worksheet[cellAddress]
-      const value = cell ? (cell.v !== undefined ? cell.v : '') : ''
+      let value: unknown = cell ? (cell.v !== undefined ? cell.v : '') : ''
+      // Date 객체 → "YYYY-MM-DD" 변환
+      if (value instanceof Date) {
+        const y = value.getFullYear()
+        const m = String(value.getMonth() + 1).padStart(2, '0')
+        const d = String(value.getDate()).padStart(2, '0')
+        value = `${y}-${m}-${d}`
+      }
 
       if (headers[col]) {
         rowData[headers[col]] = value
@@ -185,9 +205,15 @@ export default function FileUploadPage() {
       if (dataKey === 'rawData' || dataKey === 'detailData') {
         const monthSet = new Set<number>()
         parsedData.forEach((row) => {
-          const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || '')
-          if (dateStr) {
-            let month = 0
+          const dateVal = row.생산일자 || row.작업일자 || row.일자
+          if (!dateVal) return
+          let month = 0
+          // 엑셀 시리얼 넘버 처리
+          if (typeof dateVal === 'number' && dateVal > 40000 && dateVal < 60000) {
+            const d = new Date((dateVal - 25569) * 86400000)
+            month = d.getMonth() + 1
+          } else {
+            const dateStr = String(dateVal)
             if (dateStr.includes('-')) {
               month = parseInt(dateStr.split('-')[1]) || 0
             } else if (dateStr.includes('/')) {
@@ -195,10 +221,11 @@ export default function FileUploadPage() {
             } else if (dateStr.length === 8) {
               month = parseInt(dateStr.substring(4, 6)) || 0
             }
-            if (month > 0) monthSet.add(month)
           }
+          if (month > 0) monthSet.add(month)
         })
         months = Array.from(monthSet)
+        console.log(`📅 추출된 월: [${months.join(', ')}]`)
       }
 
       const success = await uploadData(dataKey, dataToUpload, months.length > 0 ? months : undefined)

@@ -64,6 +64,21 @@ function SortableHeader({
   )
 }
 
+// 날짜값에서 월 추출 (문자열, 엑셀 시리얼 넘버 모두 지원)
+const getMonthFromDate = (dateVal: unknown): number => {
+  if (!dateVal) return 0
+  if (typeof dateVal === 'number' && dateVal > 40000 && dateVal < 60000) {
+    const d = new Date((dateVal - 25569) * 86400000)
+    return d.getMonth() + 1
+  }
+  const s = String(dateVal)
+  if (s.includes('-')) return parseInt(s.split('-')[1]) || 0
+  if (s.includes('/')) return parseInt(s.split('/')[1]) || 0
+  if (s.length === 8 && /^\d{8}$/.test(s)) return parseInt(s.substring(4, 6)) || 0
+  if (s.length >= 6 && /^\d+$/.test(s)) return parseInt(s.substring(4, 6)) || 0
+  return 0
+}
+
 // 설비/Line 필드명 추출 헬퍼 함수
 const getEquipmentName = (row: Record<string, unknown>): string => {
   // 1. 정확한 필드명 매칭 시도
@@ -149,18 +164,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       if (rowProcess !== processName) return false
 
       // 월 필터링
-      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || '')
-      if (!dateStr) return true
-
-      let month = 0
-      if (dateStr.includes('-')) {
-        month = parseInt(dateStr.split('-')[1]) || 0
-      } else if (dateStr.includes('/')) {
-        month = parseInt(dateStr.split('/')[1]) || 0
-      } else if (dateStr.length === 8) {
-        month = parseInt(dateStr.substring(4, 6)) || 0
-      }
-
+      const month = getMonthFromDate(row.생산일자 || row.작업일자 || row.일자)
       return month === 0 || month === selectedMonth
     })
   }, [data.detailData, processName, selectedMonth, subMenu])
@@ -307,16 +311,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       if (rowProcess !== processName) return false
 
       // 월 필터링
-      const dateStr = String(row.생산일자 || row.작업일자 || '')
-      if (!dateStr) return true
-      let month = 0
-      if (dateStr.includes('-')) {
-        month = parseInt(dateStr.split('-')[1]) || 0
-      } else if (dateStr.includes('/')) {
-        month = parseInt(dateStr.split('/')[1]) || 0
-      } else if (dateStr.length === 8) {
-        month = parseInt(dateStr.substring(4, 6)) || 0
-      }
+      const month = getMonthFromDate(row.생산일자 || row.작업일자)
       return month === 0 || month === selectedMonth
     })
 
@@ -568,18 +563,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       if (row.공정 && row.공정 !== processName) return false
 
       // 월 필터링 (날짜 필드가 있는 경우만)
-      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
-      if (dateStr) {
-        let month = 0
-        if (dateStr.includes('-')) {
-          month = parseInt(dateStr.split('-')[1], 10)
-        } else if (dateStr.includes('/')) {
-          month = parseInt(dateStr.split('/')[1], 10)
-        } else if (dateStr.length >= 6) {
-          month = parseInt(dateStr.substring(4, 6), 10)
-        }
-        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
-      }
+      const dateMonth = getMonthFromDate(row.생산일자 || row.작업일자 || row.일자 || row.날짜)
+      if (dateMonth > 0 && dateMonth !== selectedMonth) return false
       return true
     })
 
@@ -620,18 +605,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       if (row.공정 && row.공정 !== processName) return false
 
       // 월 필터링 (날짜 필드가 있는 경우만)
-      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
-      if (dateStr) {
-        let month = 0
-        if (dateStr.includes('-')) {
-          month = parseInt(dateStr.split('-')[1], 10)
-        } else if (dateStr.includes('/')) {
-          month = parseInt(dateStr.split('/')[1], 10)
-        } else if (dateStr.length >= 6) {
-          month = parseInt(dateStr.substring(4, 6), 10)
-        }
-        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
-      }
+      const dateMonth = getMonthFromDate(row.생산일자 || row.작업일자 || row.일자 || row.날짜)
+      if (dateMonth > 0 && dateMonth !== selectedMonth) return false
       return true
     })
 
@@ -740,18 +715,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       if (row.공정 && row.공정 !== processName) return false
 
       // 월 필터링
-      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
-      if (dateStr) {
-        let month = 0
-        if (dateStr.includes('-')) {
-          month = parseInt(dateStr.split('-')[1], 10)
-        } else if (dateStr.includes('/')) {
-          month = parseInt(dateStr.split('/')[1], 10)
-        } else if (dateStr.length >= 6) {
-          month = parseInt(dateStr.substring(4, 6), 10)
-        }
-        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
-      }
+      const dateMonth = getMonthFromDate(row.생산일자 || row.작업일자 || row.일자 || row.날짜)
+      if (dateMonth > 0 && dateMonth !== selectedMonth) return false
       return true
     })
 
@@ -794,18 +759,8 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       if (row.공정 && row.공정 !== processName) return false
 
       // 월 필터링
-      const dateStr = String(row.생산일자 || row.작업일자 || row.일자 || row.날짜 || '')
-      if (dateStr) {
-        let month = 0
-        if (dateStr.includes('-')) {
-          month = parseInt(dateStr.split('-')[1], 10)
-        } else if (dateStr.includes('/')) {
-          month = parseInt(dateStr.split('/')[1], 10)
-        } else if (dateStr.length >= 6) {
-          month = parseInt(dateStr.substring(4, 6), 10)
-        }
-        if (!isNaN(month) && month > 0 && month !== selectedMonth) return false
-      }
+      const dateMonth = getMonthFromDate(row.생산일자 || row.작업일자 || row.일자 || row.날짜)
+      if (dateMonth > 0 && dateMonth !== selectedMonth) return false
       return true
     })
 

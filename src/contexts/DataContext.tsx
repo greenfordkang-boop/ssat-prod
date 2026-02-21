@@ -424,9 +424,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return filtered
   }, [data.rawData, selectedMonth, filters])
 
-  // 날짜에서 월 추출 (다양한 형식 지원)
-  const getMonthFromDate = (dateStr?: string): number => {
-    if (!dateStr) return 0
+  // 날짜값에서 월 추출 (문자열, 숫자(엑셀 시리얼), Date 객체 모두 지원)
+  const getMonthFromDate = (dateVal?: string | number | unknown): number => {
+    if (!dateVal) return 0
+    // 엑셀 시리얼 넘버 (40000~60000 범위 = 2009~2064년)
+    if (typeof dateVal === 'number' && dateVal > 40000 && dateVal < 60000) {
+      const d = new Date((dateVal - 25569) * 86400000)
+      return d.getMonth() + 1
+    }
+    const dateStr = String(dateVal)
     if (dateStr.includes('-')) {
       return parseInt(dateStr.split('-')[1]) || 0
     }
@@ -441,8 +447,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // detailData 등에서 월 추출 (여러 날짜 필드 지원)
   const getMonthFromItem = (item: Record<string, unknown>): number => {
-    const dateStr = String(item['생산일자'] || item['작업일자'] || item['일자'] || '')
-    return getMonthFromDate(dateStr)
+    const dateVal = item['생산일자'] || item['작업일자'] || item['일자']
+    return getMonthFromDate(dateVal)
   }
 
   // 초기 데이터 로드 (user 변경 시에만)
