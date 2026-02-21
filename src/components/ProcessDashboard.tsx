@@ -120,6 +120,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   const [ctSort, setCtSort] = useState<SortConfig>(null)
   const [materialSort, setMaterialSort] = useState<SortConfig>(null)
   const [packagingSort, setPackagingSort] = useState<SortConfig>(null)
+  const [repairSort, setRepairSort] = useState<SortConfig>(null)
 
   // 필터 상태
   const [equipFilter, setEquipFilter] = useState('')
@@ -708,10 +709,28 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
   // 불량수리 데이터
   const repairData = useMemo(() => {
     if (subMenu !== 'defect-repair') return []
-    return data.repairStatusData.filter(row =>
+    let result = data.repairStatusData.filter(row =>
       row.공정 === processName || !row.공정
-    ).slice(0, 50)
-  }, [data.repairStatusData, processName, subMenu])
+    )
+
+    // 정렬 적용
+    if (repairSort) {
+      result = [...result].sort((a, b) => {
+        const aVal = a[repairSort.key as keyof typeof a]
+        const bVal = b[repairSort.key as keyof typeof b]
+        const aNum = parseNumber(aVal as string | number)
+        const bNum = parseNumber(bVal as string | number)
+
+        if (!isNaN(aNum) && !isNaN(bNum) && (aNum !== 0 || bNum !== 0)) {
+          return repairSort.direction === 'asc' ? aNum - bNum : bNum - aNum
+        }
+        const cmp = String(aVal || '').localeCompare(String(bVal || ''))
+        return repairSort.direction === 'asc' ? cmp : -cmp
+      })
+    }
+
+    return result.slice(0, 50)
+  }, [data.repairStatusData, processName, subMenu, repairSort])
 
   // 자재불량 데이터 (정렬/필터 적용)
   const materialDefectData = useMemo(() => {
@@ -1409,18 +1428,34 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                 <thead>
                   <tr className="bg-slate-50">
                     {Object.keys(repairData[0] || {}).slice(0, 8).map(key => (
-                      <th key={key} className="px-4 py-3 text-left font-semibold text-slate-600">{key}</th>
+                      <SortableHeader
+                        key={key}
+                        label={key}
+                        sortKey={key}
+                        sortConfig={repairSort}
+                        onSort={(k) => handleSort(setRepairSort, k, repairSort)}
+                      />
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {repairData.map((row, idx) => (
-                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                      {Object.values(row).slice(0, 8).map((val, i) => (
-                        <td key={i} className="px-4 py-3">{String(val || '')}</td>
-                      ))}
-                    </tr>
-                  ))}
+                  {repairData.map((row, idx) => {
+                    const keys = Object.keys(row).slice(0, 8)
+                    return (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                        {keys.map((key, i) => {
+                          const val = row[key as keyof typeof row]
+                          const numVal = parseNumber(val as string | number)
+                          const isNumeric = !isNaN(numVal) && numVal > 0
+                          return (
+                            <td key={i} className={`px-4 py-3 ${isNumeric ? 'text-right tabular-nums' : ''}`}>
+                              {isNumeric ? formatNumber(Math.round(numVal)) : String(val || '')}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
