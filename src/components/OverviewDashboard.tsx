@@ -1030,16 +1030,16 @@ export default function OverviewDashboard() {
             <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, '']} />
             <Legend />
             <Bar yAxisId="left" dataKey="시간가동율" fill="#e2e8f0" radius={[4, 4, 0, 0]}>
-              <LabelList dataKey="시간가동율" position="inside" fill="#64748b" fontSize={9} formatter={(v) => `${Number(v).toFixed(1)}%`} />
+              <LabelList dataKey="시간가동율" position="inside" fill="#64748b" fontSize={9} formatter={(v) => Number(v) > 0 ? `${Number(v).toFixed(1)}%` : ''} />
             </Bar>
             <Bar yAxisId="left" dataKey="성능가동율" fill="#cbd5e1" radius={[4, 4, 0, 0]}>
-              <LabelList dataKey="성능가동율" position="inside" fill="#475569" fontSize={9} formatter={(v) => `${Number(v).toFixed(1)}%`} />
+              <LabelList dataKey="성능가동율" position="inside" fill="#475569" fontSize={9} formatter={(v) => Number(v) > 0 ? `${Number(v).toFixed(1)}%` : ''} />
             </Bar>
             <Bar yAxisId="left" dataKey="양품율" fill="#bfdbfe" radius={[4, 4, 0, 0]}>
-              <LabelList dataKey="양품율" position="inside" fill="#1e40af" fontSize={9} formatter={(v) => `${Number(v).toFixed(1)}%`} />
+              <LabelList dataKey="양품율" position="inside" fill="#1e40af" fontSize={9} formatter={(v) => Number(v) > 0 ? `${Number(v).toFixed(1)}%` : ''} />
             </Bar>
             <Line yAxisId="right" type="monotone" dataKey="OEE (%)" stroke="#f87171" strokeWidth={3} dot={{ r: 5, fill: '#f87171' }}>
-              <LabelList dataKey="OEE (%)" position="top" fill="#dc2626" fontSize={10} fontWeight="bold" formatter={(v) => `${Number(v).toFixed(1)}%`} />
+              <LabelList dataKey="OEE (%)" position="top" fill="#dc2626" fontSize={10} fontWeight="bold" formatter={(v) => Number(v) > 0 ? `${Number(v).toFixed(1)}%` : ''} />
             </Line>
           </ComposedChart>
         </ResponsiveContainer>

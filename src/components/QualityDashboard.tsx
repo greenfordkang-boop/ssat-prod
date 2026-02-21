@@ -460,7 +460,7 @@ export default function QualityDashboard() {
               />
               <Legend />
               <Bar yAxisId="left" dataKey="불량" fill="#fca5a5" radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="불량" position="top" fill="#b91c1c" fontSize={9} formatter={(v) => formatNumber(Number(v))} />
+                <LabelList dataKey="불량" position="top" fill="#b91c1c" fontSize={9} formatter={(v) => Number(v) > 0 ? formatNumber(Math.round(Number(v))) : ''} />
               </Bar>
               <Bar yAxisId="left" dataKey="폐기" fill="#fbcfe8" radius={[4, 4, 0, 0]}>
                 <LabelList dataKey="폐기" position="top" fill="#9d174d" fontSize={9} formatter={(v) => Number(v) > 0 ? formatNumber(Number(v)) : ''} />

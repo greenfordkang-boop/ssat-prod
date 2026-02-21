@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useData } from '@/contexts/DataContext'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend, LabelList } from 'recharts'
 import { formatNumber, parseNumber, PROCESS_MAPPING, CHART_COLORS } from '@/lib/utils'
 
 interface ProcessDashboardProps {
@@ -417,7 +417,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
       })
     }
 
-    return result.slice(0, 50)
+    return result
   }, [processData, uphSort, productUphMap])
 
   // CT 데이터에서 유연하게 값 찾기 (표준/실제 구분 명확히)
@@ -949,12 +949,14 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
             <div className="bg-white rounded-xl p-6 border border-gray-100">
               <h3 className="text-base font-semibold mb-4">일별 생산추이</h3>
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={dailyTrend}>
+                <BarChart data={dailyTrend} margin={{ top: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                   <YAxis tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => formatNumber(v as number)} />
-                  <Bar dataKey="production" name="생산" fill={CHART_COLORS.pastel[0]} radius={[4, 4, 0, 0]} />
+                  <Tooltip formatter={(v) => formatNumber(Math.round(v as number))} />
+                  <Bar dataKey="production" name="생산" fill={CHART_COLORS.pastel[0]} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="production" position="top" fill="#1e40af" fontSize={9} formatter={(v) => Number(v) > 0 ? formatNumber(Math.round(Number(v))) : ''} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -962,12 +964,14 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
             <div className="bg-white rounded-xl p-6 border border-gray-100">
               <h3 className="text-base font-semibold mb-4">일별 불량율 추이</h3>
               <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={dailyTrend}>
+                <LineChart data={dailyTrend} margin={{ top: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                   <YAxis unit="%" tick={{ fontSize: 11 }} tickFormatter={(v) => v.toFixed(1)} />
                   <Tooltip formatter={(v) => `${(v as number).toFixed(1)}%`} />
-                  <Line type="monotone" dataKey="defectRate" name="불량율" stroke={CHART_COLORS.pastel[3]} strokeWidth={2} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="defectRate" name="불량율" stroke={CHART_COLORS.pastel[3]} strokeWidth={2} dot={{ r: 4 }}>
+                    <LabelList dataKey="defectRate" position="top" fill="#b91c1c" fontSize={9} formatter={(v) => Number(v) > 0 ? `${Number(v).toFixed(1)}%` : ''} />
+                  </Line>
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -1241,14 +1245,18 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                 <div className="bg-white rounded-xl p-6 border border-gray-100">
                   <h3 className="text-base font-semibold mb-4">설비(라인)별 불량 현황</h3>
                   <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={packagingStats.topEquipments} layout="vertical">
+                    <BarChart data={packagingStats.topEquipments} layout="vertical" margin={{ right: 60 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                       <XAxis type="number" tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={110} />
-                      <Tooltip formatter={(v) => formatNumber(v as number)} />
+                      <Tooltip formatter={(v) => formatNumber(Math.round(v as number))} />
                       <Legend />
-                      <Bar dataKey="defect" name="불량" fill={CHART_COLORS.pastel[3]} radius={[0, 4, 4, 0]} />
-                      <Bar dataKey="repair" name="수리" fill={CHART_COLORS.pastel[1]} radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="defect" name="불량" fill={CHART_COLORS.pastel[3]} radius={[0, 4, 4, 0]}>
+                        <LabelList dataKey="defect" position="right" fill="#b91c1c" fontSize={9} fontWeight="bold" formatter={(v) => Number(v) > 0 ? formatNumber(Math.round(Number(v))) : ''} />
+                      </Bar>
+                      <Bar dataKey="repair" name="수리" fill={CHART_COLORS.pastel[1]} radius={[0, 4, 4, 0]}>
+                        <LabelList dataKey="repair" position="right" fill="#047857" fontSize={9} fontWeight="bold" formatter={(v) => Number(v) > 0 ? formatNumber(Math.round(Number(v))) : ''} />
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1268,7 +1276,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                         outerRadius={100}
                         paddingAngle={2}
                         dataKey="value"
-                        label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                        label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
                         labelLine={false}
                       >
                         {packagingStats.topProducts.map((_, index) => (
@@ -1457,11 +1465,11 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
             <div className="bg-white rounded-xl p-6 border border-gray-100">
               <h3 className="text-base font-semibold mb-4">일자별 불량 발생 수량</h3>
               <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={materialDefectStats.dailyTrend}>
+                <LineChart data={materialDefectStats.dailyTrend} margin={{ top: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                   <YAxis tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => formatNumber(v as number)} />
+                  <Tooltip formatter={(v) => formatNumber(Math.round(v as number))} />
                   <Line
                     type="monotone"
                     dataKey="value"
@@ -1470,7 +1478,9 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                     strokeWidth={2}
                     dot={{ r: 4, fill: CHART_COLORS.pastel[3] }}
                     activeDot={{ r: 6 }}
-                  />
+                  >
+                    <LabelList dataKey="value" position="top" fill="#b91c1c" fontSize={9} formatter={(v) => Number(v) > 0 ? formatNumber(Math.round(Number(v))) : ''} />
+                  </Line>
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -1492,7 +1502,7 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
                       outerRadius={100}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
                       labelLine={false}
                     >
                       {materialDefectStats.pieData.map((_, index) => (
@@ -1509,12 +1519,14 @@ export default function ProcessDashboard({ process, subMenu }: ProcessDashboardP
               <div className="bg-white rounded-xl p-6 border border-gray-100">
                 <h3 className="text-base font-semibold mb-4">부품별 불량 TOP 5</h3>
                 <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={materialDefectStats.topParts} layout="vertical">
+                  <BarChart data={materialDefectStats.topParts} layout="vertical" margin={{ right: 60 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis type="number" tickFormatter={formatNumber} tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120} />
-                    <Tooltip formatter={(v) => formatNumber(v as number)} />
-                    <Bar dataKey="value" name="불량수량" fill={CHART_COLORS.pastel[3]} radius={[0, 4, 4, 0]} />
+                    <Tooltip formatter={(v) => formatNumber(Math.round(v as number))} />
+                    <Bar dataKey="value" name="불량수량" fill={CHART_COLORS.pastel[3]} radius={[0, 4, 4, 0]}>
+                      <LabelList dataKey="value" position="right" fill="#b91c1c" fontSize={10} fontWeight="bold" formatter={(v) => Number(v) > 0 ? formatNumber(Math.round(Number(v))) : ''} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>

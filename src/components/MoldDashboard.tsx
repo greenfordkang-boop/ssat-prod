@@ -611,7 +611,7 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
                   cy="50%"
                   outerRadius={80}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
                   labelLine={false}
                 >
                   {categoryChartData.map((_, index) => (
@@ -657,7 +657,7 @@ export default function MoldDashboard({ subTab }: MoldDashboardProps) {
                   cy="50%"
                   outerRadius={80}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
                   labelLine={false}
                 >
                   {repairTypeChartData.map((_, index) => (
